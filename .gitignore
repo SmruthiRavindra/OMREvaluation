@@ -1,6 +1,5 @@
 venv/
 dataset/
 models/
-__pycache__/
-*.keras
 *.zip
+*.keras
