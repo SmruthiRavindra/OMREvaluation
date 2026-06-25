@@ -446,6 +446,27 @@
         </div>
       </div>
 
+      <!-- Answer Key Card -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header">🔑 Answer Key & Grading</div>
+        <div class="card-body">
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
+            <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
+            <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+          </div>
+          <div>
+            <button class="btn btn-secondary" id="saveAnswerKeyBtn">
+              💾 Save Answer Key
+            </button>
+          </div>
+          <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+        </div>
+      </div>
+
       <!-- Stats Card -->
       <div class="card" id="statsCard" style="display:none;">
         <div class="card-header">📊 Detection Summary</div>
@@ -473,21 +494,61 @@
               🎯 <span class="info-value" id="totalDetections">—</span> detections
             </div>
             <div class="info-item">
-              🆔 <span class="info-value" id="usnDetections">—</span> USN
+              🆔 Student: <span class="info-value" id="usnText" style="color:var(--accent)">—</span>
             </div>
           </div>
 
-          <div class="alert warning" id="reviewAlert">
+          <!-- Scoring Section -->
+          <div id="scoreSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+            <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Grading Report</h4>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <div>
+                <div style="font-size: 24px; font-weight: 800; color: var(--green);" id="scorePercent">0%</div>
+                <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Score Percentage</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><span id="scoreCorrect">0</span> / <span id="scoreTotal">0</span></div>
+                <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Correct Answers</div>
+              </div>
+            </div>
+            <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0; font-size: 12px;">
+              <div class="stat-card" style="padding: 10px 4px;">
+                <div class="stat-value green" id="scoreCorrectVal" style="font-size: 16px;">0</div>
+                <div class="stat-label" style="font-size: 8px;">Correct</div>
+              </div>
+              <div class="stat-card" style="padding: 10px 4px;">
+                <div class="stat-value red" id="scoreIncorrectVal" style="font-size: 16px;">0</div>
+                <div class="stat-label" style="font-size: 8px;">Incorrect</div>
+              </div>
+              <div class="stat-card" style="padding: 10px 4px;">
+                <div class="stat-value gray" id="scoreUnansweredVal" style="font-size: 16px;">0</div>
+                <div class="stat-label" style="font-size: 8px;">Unanswered</div>
+              </div>
+              <div class="stat-card" style="padding: 10px 4px;">
+                <div class="stat-value amber" id="scoreMultiVal" style="font-size: 16px;">0</div>
+                <div class="stat-label" style="font-size: 8px;">Multi</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
             ⚠️ Manual review required — some bubbles are ambiguous.
           </div>
         </div>
       </div>
 
-      <!-- Bubble Table -->
+      <!-- Table Card -->
       <div class="card" id="tableCard" style="display:none;">
-        <div class="card-header">🔬 Bubble Details</div>
+        <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
+          <span id="tableTitle">🔬 Bubble Details</span>
+          <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
+            <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
+            <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+          </div>
+        </div>
         <div class="card-body" style="padding: 0;">
-          <div class="bubble-table-wrapper">
+          <!-- Bubbles Table -->
+          <div class="bubble-table-wrapper" id="bubblesTableWrapper">
             <table class="bubble-table">
               <thead>
                 <tr>
@@ -499,6 +560,21 @@
                 </tr>
               </thead>
               <tbody id="bubbleTableBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Grading Table -->
+          <div class="bubble-table-wrapper" id="gradingTableWrapper" style="display: none;">
+            <table class="bubble-table">
+              <thead>
+                <tr>
+                  <th>Q#</th>
+                  <th>Marked</th>
+                  <th>Correct</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="gradingTableBody"></tbody>
             </table>
           </div>
         </div>
@@ -553,6 +629,30 @@
     const errorAlert   = document.getElementById('errorAlert');
     const reviewAlert  = document.getElementById('reviewAlert');
 
+    // Answer Key & Grading Elements
+    const sessionIdInput     = document.getElementById('sessionIdInput');
+    const answerKeyInput     = document.getElementById('answerKeyInput');
+    const saveAnswerKeyBtn   = document.getElementById('saveAnswerKeyBtn');
+    const answerKeyStatus    = document.getElementById('answerKeyStatus');
+    const usnText            = document.getElementById('usnText');
+    
+    const scoreSection       = document.getElementById('scoreSection');
+    const scorePercent       = document.getElementById('scorePercent');
+    const scoreCorrect       = document.getElementById('scoreCorrect');
+    const scoreTotal         = document.getElementById('scoreTotal');
+    const scoreCorrectVal    = document.getElementById('scoreCorrectVal');
+    const scoreIncorrectVal  = document.getElementById('scoreIncorrectVal');
+    const scoreUnansweredVal = document.getElementById('scoreUnansweredVal');
+    const scoreMultiVal      = document.getElementById('scoreMultiVal');
+
+    // Tabs
+    const btnShowBubbles      = document.getElementById('btnShowBubbles');
+    const btnShowGrading      = document.getElementById('btnShowGrading');
+    const bubblesTableWrapper = document.getElementById('bubblesTableWrapper');
+    const gradingTableWrapper = document.getElementById('gradingTableWrapper');
+    const gradingTableBody    = document.getElementById('gradingTableBody');
+    const tableTitle          = document.getElementById('tableTitle');
+
     // ── Upload handling ───────────────────────────────────
     uploadZone.addEventListener('click', () => fileInput.click());
     uploadZone.addEventListener('dragover', e => {
@@ -599,6 +699,66 @@
       hideError();
     }
 
+    // ── Save Answer Key ───────────────────────────────────
+    saveAnswerKeyBtn.addEventListener('click', async () => {
+      const sessionId = sessionIdInput.value.trim() || 'default';
+      const rawKey = answerKeyInput.value;
+      
+      // Parse answer key
+      const answers = {};
+      const lines = rawKey.split('\n');
+      lines.forEach(line => {
+        const parts = line.split(':');
+        if (parts.length === 2) {
+          const qNum = parseInt(parts[0].trim());
+          const ans = parts[1].trim().toUpperCase();
+          if (!isNaN(qNum) && ans) {
+            answers[qNum] = ans;
+          }
+        } else {
+          // Alternative comma separated list or space separated
+          const items = line.split(/[ ,]+/);
+          items.forEach(item => {
+            const subparts = item.split(':');
+            if (subparts.length === 2) {
+              const qNum = parseInt(subparts[0].trim());
+              const ans = subparts[1].trim().toUpperCase();
+              if (!isNaN(qNum) && ans) {
+                answers[qNum] = ans;
+              }
+            }
+          });
+        }
+      });
+
+      if (Object.keys(answers).length === 0) {
+        answerKeyStatus.textContent = '❌ Invalid format. Use: "1:A"';
+        answerKeyStatus.style.color = 'var(--red)';
+        return;
+      }
+
+      saveAnswerKeyBtn.disabled = true;
+      answerKeyStatus.textContent = 'Saving answer key...';
+      answerKeyStatus.style.color = 'var(--text-muted)';
+
+      try {
+        const resp = await fetch('/answer-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, answers })
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        answerKeyStatus.textContent = `✅ Saved ${data.total_questions} questions for session "${sessionId}"`;
+        answerKeyStatus.style.color = 'var(--green)';
+      } catch (err) {
+        answerKeyStatus.textContent = `❌ Error: ${err.message}`;
+        answerKeyStatus.style.color = 'var(--red)';
+      } finally {
+        saveAnswerKeyBtn.disabled = false;
+      }
+    });
+
     // ── Clear ─────────────────────────────────────────────
     clearBtn.addEventListener('click', () => {
       selectedFile = null;
@@ -616,6 +776,9 @@
       resultImage.style.display = 'none';
       placeholder.style.display = '';
       reviewAlert.classList.remove('show');
+      scoreSection.style.display = 'none';
+      btnShowGrading.style.display = 'none';
+      showBubblesTab();
       hideError();
     });
 
@@ -637,6 +800,10 @@
       try {
         const formData = new FormData();
         formData.append('file', selectedFile);
+        formData.append('session_id', sessionIdInput.value.trim() || 'default');
+        formData.append('questions_per_column', '15');
+        formData.append('num_columns', '2');
+        formData.append('options', 'ABCD');
 
         const resp = await fetch('/debug/evaluate', { method: 'POST', body: formData });
         if (!resp.ok) {
@@ -655,6 +822,64 @@
       }
     });
 
+    // ── Tabs Toggling ─────────────────────────────────────
+    btnShowBubbles.addEventListener('click', showBubblesTab);
+    btnShowGrading.addEventListener('click', showGradingTab);
+
+    function showBubblesTab() {
+      btnShowBubbles.classList.add('active');
+      btnShowGrading.classList.remove('active');
+      bubblesTableWrapper.style.display = 'block';
+      gradingTableWrapper.style.display = 'none';
+      tableTitle.textContent = '🔬 Bubble Details';
+    }
+
+    function showGradingTab() {
+      btnShowBubbles.classList.remove('active');
+      btnShowGrading.classList.add('active');
+      bubblesTableWrapper.style.display = 'none';
+      gradingTableWrapper.style.display = 'block';
+      tableTitle.textContent = '🔑 Grading Report';
+    }
+
+    function updateScoreSummary() {
+      if (!resultData || !resultData.score_report) return;
+      const report = resultData.score_report;
+      
+      let correct = 0;
+      let incorrect = 0;
+      let unanswered = 0;
+      let multiple_marked = 0;
+      let ambiguous = 0;
+      
+      report.per_question.forEach(q => {
+        if (q.status === 'correct') correct++;
+        else if (q.status === 'incorrect') incorrect++;
+        else if (q.status === 'unanswered') unanswered++;
+        else if (q.status === 'multiple_marked') multiple_marked++;
+        else if (q.status === 'ambiguous') ambiguous++;
+      });
+      
+      const total = report.total_questions;
+      const scorePct = total > 0 ? ((correct / total) * 100) : 0;
+      
+      scorePercent.textContent = `${scorePct.toFixed(2)}%`;
+      if (scorePct >= 75) {
+        scorePercent.style.color = 'var(--green)';
+      } else if (scorePct >= 40) {
+        scorePercent.style.color = 'var(--amber)';
+      } else {
+        scorePercent.style.color = 'var(--red)';
+      }
+      
+      scoreCorrect.textContent = correct;
+      scoreTotal.textContent = total;
+      scoreCorrectVal.textContent = correct;
+      scoreIncorrectVal.textContent = incorrect;
+      scoreUnansweredVal.textContent = unanswered;
+      scoreMultiVal.textContent = multiple_marked;
+    }
+
     // ── Render results ────────────────────────────────────
     function renderResults(data) {
       // Stats
@@ -663,13 +888,92 @@
       document.getElementById('ambigCount').textContent = data.ambiguous_count;
       document.getElementById('processingTime').textContent = data.processing_time_ms;
       document.getElementById('totalDetections').textContent = data.total_detections;
-      document.getElementById('usnDetections').textContent = data.usn_detections;
+      
+      // Populate USN
+      usnText.textContent = data.usn || 'NOT DETECTED';
       statsCard.style.display = '';
 
       if (data.needs_manual_review) {
         reviewAlert.classList.add('show');
       } else {
         reviewAlert.classList.remove('show');
+      }
+
+      // Populate Grading
+      if (data.score_report) {
+        const report = data.score_report;
+        
+        updateScoreSummary();
+        
+        scoreSection.style.display = 'block';
+        btnShowGrading.style.display = 'block';
+        
+        // Fill Grading Table
+        gradingTableBody.innerHTML = '';
+        (report.per_question || []).forEach(q => {
+          const tr = document.createElement('tr');
+          const markedText = q.marked_options.length > 0 ? q.marked_options.join(', ') : '—';
+          const correctText = q.correct_option || '—';
+          
+          let statusChipClass = 'empty';
+          if (q.status === 'correct') statusChipClass = 'filled';
+          else if (q.status === 'incorrect' || q.status === 'multiple_marked') statusChipClass = 'ambiguous';
+          
+          let actionCell = `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="state-chip ${statusChipClass}">${q.status}</span>
+              <select class="override-select" data-qnum="${q.question_number}" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer;">
+                <option value="default" selected>Override...</option>
+                <option value="correct" ${q.status === 'correct' ? 'disabled' : ''}>✅ Give Marks</option>
+                <option value="incorrect" ${q.status === 'incorrect' ? 'disabled' : ''}>❌ Mark Wrong</option>
+                <option value="multiple_marked" ${q.status === 'multiple_marked' ? 'disabled' : ''}>⚠️ Multiple</option>
+              </select>
+            </div>
+          `;
+          
+          tr.innerHTML = `
+            <td style="color:var(--text-muted)">Q${q.question_number}</td>
+            <td style="font-weight: 700;">${markedText}</td>
+            <td style="color: var(--text-secondary);">${correctText}</td>
+            <td>${actionCell}</td>
+          `;
+          gradingTableBody.appendChild(tr);
+        });
+
+        // Bind events to select elements
+        document.querySelectorAll('.override-select').forEach(select => {
+          select.addEventListener('change', (e) => {
+            const qNum = parseInt(e.target.dataset.qnum);
+            const val = e.target.value;
+            if (val === 'default') return;
+            
+            const q = report.per_question.find(item => item.question_number === qNum);
+            if (q) {
+              q.status = val;
+              
+              // Update status chip
+              const statusChip = select.previousElementSibling;
+              statusChip.textContent = val;
+              
+              let newClass = 'empty';
+              if (val === 'correct') newClass = 'filled';
+              else if (val === 'incorrect' || val === 'multiple_marked') newClass = 'ambiguous';
+              statusChip.className = `state-chip ${newClass}`;
+              
+              // Update dropdown states
+              Array.from(select.options).forEach(opt => {
+                if (opt.value === 'default') opt.selected = true;
+                else opt.disabled = (opt.value === val);
+              });
+              
+              updateScoreSummary();
+            }
+          });
+        });
+      } else {
+        scoreSection.style.display = 'none';
+        btnShowGrading.style.display = 'none';
+        showBubblesTab();
       }
 
       // Image

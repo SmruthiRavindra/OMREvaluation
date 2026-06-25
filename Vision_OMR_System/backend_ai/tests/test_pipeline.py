@@ -245,6 +245,34 @@ class TestScoring:
         assert report.unanswered == 1
         assert report.per_question[0].status == AnswerStatus.UNANSWERED
 
+    def test_map_tilted_bubbles(self):
+        """Bubbles with slight vertical tilt/jitter within 15px should cluster into the correct rows."""
+        from core.scoring import map_bubbles_to_grid, SheetLayout
+
+        layout = SheetLayout(questions_per_column=2, num_columns=1, options="ABCD")
+
+        # Row 1 (y average ~53.0) and Row 2 (y average ~103.0)
+        crs = [
+            # Row 1 bubbles: y has jitter [50, 55, 52, 54]
+            self._make_cr(10, 50, 30, 70, "empty"),
+            self._make_cr(40, 55, 60, 75, "filled"),
+            self._make_cr(70, 52, 90, 72, "empty"),
+            self._make_cr(100, 54, 120, 74, "empty"),
+            # Row 2 bubbles: y has jitter [100, 105, 102, 104]
+            self._make_cr(10, 100, 30, 120, "empty"),
+            self._make_cr(40, 105, 60, 125, "empty"),
+            self._make_cr(70, 102, 90, 122, "filled"),
+            self._make_cr(100, 104, 120, 124, "empty"),
+        ]
+
+        grid = map_bubbles_to_grid(crs, layout)
+        assert 1 in grid
+        assert 2 in grid
+        assert len(grid[1]) == 4
+        assert len(grid[2]) == 4
+        assert grid[1]["B"].state.value == "filled"
+        assert grid[2]["C"].state.value == "filled"
+
 
 # ---------------------------------------------------------------------------
 # Test: FastAPI endpoints

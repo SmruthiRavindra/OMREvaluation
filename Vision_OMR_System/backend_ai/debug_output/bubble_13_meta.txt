@@ -1,3 +1,3 @@
-state: filled
-fill_ratio: 1.0000
-bbox: 337, 172, 352, 187
+state: empty
+fill_ratio: 0.0000
+bbox: 156, 784, 186, 812

@@ -27,6 +27,8 @@ from pydantic import BaseModel
 from core.preprocess import preprocess_image
 from core.localization import run_yolo_inference
 from core.classification import classify_all, BubbleState
+from core import extract_usn_from_roi
+
 from core.scoring import (
     score_sheet,
     SheetLayout,
@@ -105,13 +107,12 @@ async def evaluate_sheet(file: UploadFile = File(...)):
         usn_detections = [d for d in detections if d.class_name == "usn"]
         bubble_detections = [d for d in detections if d.class_name != "usn"]
 
-        # Extract USN region (placeholder — OCR integration is a future step)
+        # Extract USN region using OCR
         usn_value = None
         if usn_detections:
-            # For now, mark that a USN box was detected.
-            # Full OCR (e.g. Tesseract / EasyOCR) would crop this region
-            # and read the student ID. That's a future enhancement.
-            usn_value = "DETECTED"
+            det = usn_detections[0]
+            usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+
 
         # ── 5. Classify: secondary pixel-ratio verification ─────────────────
         classifications = classify_all(clean_img, bubble_detections)
@@ -238,8 +239,8 @@ class ScoreResponse(BaseModel):
 async def score_evaluated_sheet(
     file: UploadFile = File(...),
     session_id: str = "default",
-    questions_per_column: int = 30,
-    num_columns: int = 1,
+    questions_per_column: int = 15,
+    num_columns: int = 2,
     options: str = "ABCD",
 ):
     """
@@ -372,7 +373,13 @@ class DebugResponse(BaseModel):
 
 
 @app.post("/debug/evaluate")
-async def debug_evaluate(file: UploadFile = File(...)):
+async def debug_evaluate(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form("default"),
+    questions_per_column: int = Form(15),
+    num_columns: int = Form(2),
+    options: str = Form("ABCD")
+):
     """
     Debug endpoint: runs the full pipeline and returns annotated images
     alongside the JSON results. Used for visual verification.
@@ -395,6 +402,12 @@ async def debug_evaluate(file: UploadFile = File(...)):
         detections = run_yolo_inference(clean_img)
         usn_dets = [d for d in detections if d.class_name == "usn"]
         bubble_dets = [d for d in detections if d.class_name != "usn"]
+
+        # Extract USN
+        usn_value = None
+        if usn_dets:
+            det = usn_dets[0]
+            usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
 
         # Classify
         classifications = classify_all(clean_img, bubble_dets)
@@ -452,6 +465,37 @@ async def debug_evaluate(file: UploadFile = File(...)):
             for c in classifications
         ]
 
+        # Scoring report if answer key is set
+        score_report_dict = None
+        answer_key = _answer_keys.get(session_id) if session_id else None
+        if answer_key:
+            layout = SheetLayout(
+                questions_per_column=questions_per_column,
+                num_columns=num_columns,
+                options=options,
+            )
+            report = score_sheet(classifications, answer_key, layout)
+            score_report_dict = {
+                "total_questions": report.total_questions,
+                "answered": report.answered,
+                "correct": report.correct,
+                "incorrect": report.incorrect,
+                "unanswered": report.unanswered,
+                "multiple_marked": report.multiple_marked,
+                "ambiguous": report.ambiguous,
+                "score_percent": report.score_percent,
+                "per_question": [
+                    {
+                        "question_number": q.question_number,
+                        "marked_options": q.marked_options,
+                        "correct_option": q.correct_option,
+                        "status": q.status.value,
+                        "has_ambiguous": q.has_ambiguous,
+                    }
+                    for q in report.per_question
+                ]
+            }
+
         return {
             "original_image_b64": _img_to_base64(orig_img) if orig_img is not None else "",
             "preprocessed_image_b64": _img_to_base64(clean_img),
@@ -459,13 +503,16 @@ async def debug_evaluate(file: UploadFile = File(...)):
             "total_detections": len(detections),
             "bubble_detections": len(bubble_dets),
             "usn_detections": len(usn_dets),
+            "usn": usn_value,
             "filled_count": filled,
             "empty_count": empty,
             "ambiguous_count": ambig,
             "needs_manual_review": ambig > 0,
             "processing_time_ms": int((t_end - t_start) * 1000),
             "bubbles": [b.model_dump() for b in bubbles],
+            "score_report": score_report_dict
         }
+
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -83,7 +83,9 @@ EMPTY_THRESHOLD: float = 0.15
 
 # Fixed grayscale threshold to separate dark ink/pencil (letters/marks) from
 # the white paper inside the bubble. Values below this are considered ink.
-FIXED_GRAY_THRESHOLD: int = 135
+FIXED_GRAY_THRESHOLD: int = 100
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -256,9 +258,17 @@ def _classify_with_threshold(
     if fill_ratio >= FILL_THRESHOLD:
         state = BubbleState.FILLED
     elif fill_ratio <= EMPTY_THRESHOLD:
-        state = BubbleState.EMPTY
+        # Hybrid check: if YOLO model is highly confident it is filled, trust YOLO to catch lighter marks
+        if detection.class_name == "filled" and detection.confidence > 0.55:
+            state = BubbleState.FILLED
+        else:
+            state = BubbleState.EMPTY
     else:
-        state = BubbleState.AMBIGUOUS
+        # Hybrid check: if YOLO model is highly confident it is unfilled, trust YOLO to ignore pre-printed letter outlines
+        if detection.class_name == "unfilled" and detection.confidence > 0.65:
+            state = BubbleState.EMPTY
+        else:
+            state = BubbleState.AMBIGUOUS
 
     return ClassificationResult(detection, state, fill_ratio)
 

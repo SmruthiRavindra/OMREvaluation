@@ -3,6 +3,7 @@ from .preprocess import preprocess_image
 from .localization import run_yolo_inference, BubbleDetection
 from .classification import classify_bubble, classify_all, BubbleState, ClassificationResult
 from .scoring import score_sheet, map_bubbles_to_grid, SheetLayout, ScoreReport
+from .usn_extraction import extract_usn_from_roi, correct_usn_format
 
 __all__ = [
     "preprocess_image",
@@ -16,5 +17,8 @@ __all__ = [
     "map_bubbles_to_grid",
     "SheetLayout",
     "ScoreReport",
+    "extract_usn_from_roi",
+    "correct_usn_format",
 ]
+
 

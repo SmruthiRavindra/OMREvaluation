@@ -148,16 +148,26 @@ def map_bubbles_to_grid(
     q_offset = 0
 
     for block in col_blocks:
-        block.sort(key=lambda t: t[1])  # sort by cy (top to bottom)
+        # Sort by y first to group horizontally aligned bubbles
+        block.sort(key=lambda t: t[1])
 
-        # Group into rows of `num_options` bubbles each
-        num_opts = layout.num_options
-        for row_idx in range(0, len(block), num_opts):
-            row_items = block[row_idx : row_idx + num_opts]
+        # Cluster y-coordinates of bubble centers within 15.0 pixels tolerance
+        rows: List[List[Tuple[float, float, ClassificationResult]]] = []
+        for item in block:
+            cy = item[1]
+            if rows:
+                avg_y = sum(t[1] for t in rows[-1]) / len(rows[-1])
+                if abs(cy - avg_y) <= 15.0:
+                    rows[-1].append(item)
+                    continue
+            rows.append([item])
+
+        # Map each clustered row to a question number
+        for row_idx, row_items in enumerate(rows):
             # Sort within row by x (left to right) → option order
             row_items.sort(key=lambda t: t[0])
 
-            q_num = q_offset + (row_idx // num_opts) + 1
+            q_num = q_offset + row_idx + 1
             grid[q_num] = {}
             for opt_idx, (_, _, cr) in enumerate(row_items):
                 if opt_idx < len(layout.options):
@@ -200,11 +210,18 @@ def score_sheet(
     per_question: List[QuestionResult] = []
     correct = incorrect = unanswered = multiple_marked = ambiguous = 0
 
-    total_questions = layout.total_questions if answer_key else len(grid)
+    if answer_key is not None:
+        # Grade ONLY questions present in the answer key
+        q_numbers = sorted(answer_key.keys())
+        total_questions = len(q_numbers)
+    else:
+        q_numbers = list(range(1, (layout.total_questions if layout else len(grid)) + 1))
+        total_questions = len(q_numbers)
 
-    for q_num in range(1, total_questions + 1):
+    for q_num in q_numbers:
         options = grid.get(q_num, {})
         correct_option = answer_key.get(q_num) if answer_key else None
+
 
         # Determine which options were filled
         marked: List[str] = []
