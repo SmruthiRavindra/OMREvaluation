@@ -72,10 +72,14 @@ class ClassificationResult:
 # Thresholds (tunable)
 # ---------------------------------------------------------------------------
 
-# If dark pixel ratio inside the ROI exceeds FILL_THRESHOLD → FILLED
-FILL_THRESHOLD: float = 0.35
+# NOTE: OMR bubbles have a printed circle border that contributes ~40%
+# dark pixels even when the bubble is completely empty.  We crop to the
+# inner region and apply a circular mask so only the interior is measured.
+#
+# If dark pixel ratio inside the masked inner ROI exceeds FILL_THRESHOLD → FILLED
+FILL_THRESHOLD: float = 0.55
 # Below EMPTY_THRESHOLD → EMPTY  |  between → AMBIGUOUS
-EMPTY_THRESHOLD: float = 0.10
+EMPTY_THRESHOLD: float = 0.45
 
 
 # ---------------------------------------------------------------------------
@@ -150,18 +154,64 @@ def _crop_roi(image: np.ndarray, det: BubbleDetection) -> np.ndarray:
     return cv2.resize(roi, (64, 64))
 
 
+def _extract_inner_region(roi: np.ndarray, shrink: float = 0.35) -> tuple:
+    """
+    Extract the inner circular region of a bubble, excluding the
+    printed border ring.
+
+    Parameters
+    ----------
+    roi     : 64×64 BGR image of the bubble
+    shrink  : fraction to shrink inward from each edge (0.35 = keep
+              the central 30% diameter circle).  The printed border
+              ring typically occupies the outer ~30-35% on each side.
+
+    Returns
+    -------
+    (gray_inner, mask) where gray_inner is the masked grayscale image
+    and mask is the circular binary mask (255 = inside, 0 = outside).
+    """
+    size = roi.shape[0]  # 64
+    center = size // 2
+    # Inner radius: keep central portion, skip printed border
+    inner_radius = int(center * (1.0 - shrink))
+
+    # Create circular mask
+    mask = np.zeros((size, size), dtype=np.uint8)
+    cv2.circle(mask, (center, center), inner_radius, 255, -1)
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    return gray, mask
+
+
 def _classify_with_threshold(
     roi: np.ndarray, detection: BubbleDetection
 ) -> ClassificationResult:
     """
-    Threshold-based classifier.
+    Threshold-based classifier with inner-region masking.
 
-    Converts to grayscale, applies Otsu binarization, then computes the
-    fraction of dark (ink) pixels.
+    Strategy:
+      1. Extract the inner circular region (excludes printed border)
+      2. Apply Otsu binarization on the inner region
+      3. Compute fill ratio = dark pixels / total pixels inside mask
+      4. Compare against tuned thresholds
+
+    This avoids the printed circle border inflating the fill ratio
+    and causing empty bubbles to be classified as filled.
     """
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray, mask = _extract_inner_region(roi)
+
+    # Otsu binarization (inverted: dark ink → white)
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    fill_ratio = float(np.count_nonzero(binary)) / binary.size
+
+    # Only count pixels inside the circular mask
+    masked_binary = cv2.bitwise_and(binary, mask)
+    mask_pixel_count = np.count_nonzero(mask)
+
+    if mask_pixel_count == 0:
+        return ClassificationResult(detection, BubbleState.EMPTY, 0.0)
+
+    fill_ratio = float(np.count_nonzero(masked_binary)) / mask_pixel_count
 
     if fill_ratio >= FILL_THRESHOLD:
         state = BubbleState.FILLED

@@ -1,0 +1,78 @@
+# =============================================================================
+# docker-compose.yml
+# Vision OMR System — Full-stack local development
+#
+# Usage:
+#   docker compose up --build
+#
+# Services:
+#   db       → PostgreSQL 16 (port 5432)
+#   backend  → FastAPI / Python AI engine (port 8000)
+#   gateway  → Express / Node.js data gateway (port 3000)
+# =============================================================================
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: omr_db
+      POSTGRES_USER: omr_user
+      POSTGRES_PASSWORD: omr_password_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-run migrations on first start
+      - ./data_gateway/config/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omr_user -d omr_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── FastAPI Backend AI ─────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend_ai
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend_ai/weights:/app/weights:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Node.js Data Gateway ───────────────────────────────────────────────────
+  gateway:
+    build:
+      context: ./data_gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      FASTAPI_URL: http://backend:8000
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: omr_db
+      PGUSER: omr_user
+      PGPASSWORD: omr_password_dev
+      PGSSL: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:

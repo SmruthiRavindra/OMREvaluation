@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vision OMR — Testing Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-primary: #0a0a14;
+      --bg-card: #12121e;
+      --bg-card-hover: #1a1a2e;
+      --bg-input: #1e1e2e;
+      --border: #2a2a3e;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #6C63FF;
+      --accent-glow: rgba(108, 99, 255, 0.3);
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --gray: #64748b;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    .header {
+      padding: 20px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(20px);
+      background: rgba(10, 10, 20, 0.8);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-left { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      font-size: 22px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent), #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: rgba(108, 99, 255, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(108, 99, 255, 0.3);
+    }
+    .header-status {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .header-status .dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Main Layout ─────────────────────────────────── */
+    .main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 28px 32px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 28px;
+    }
+
+    @media (max-width: 1024px) {
+      .main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Cards ────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-body { padding: 20px; }
+
+    /* ── Upload Area ──────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      background: var(--bg-input);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(108, 99, 255, 0.05);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+    .upload-zone.has-file {
+      border-color: var(--green);
+      border-style: solid;
+    }
+    .upload-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.7; }
+    .upload-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .upload-hint { font-size: 12px; color: var(--text-muted); }
+    .upload-zone input { display: none; }
+
+    .file-preview {
+      margin-top: 16px;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      max-height: 300px;
+    }
+    .file-preview img {
+      width: 100%;
+      height: auto;
+      display: block;
+      object-fit: contain;
+      max-height: 300px;
+    }
+
+    /* ── Buttons ──────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: var(--radius-sm);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      color: white;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 25px var(--accent-glow);
+    }
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .btn-secondary {
+      background: var(--bg-input);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--bg-card-hover); }
+
+    /* ── Stats Grid ───────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+    .stat-value {
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-value.green { color: var(--green); }
+    .stat-value.gray { color: var(--gray); }
+    .stat-value.amber { color: var(--amber); }
+
+    /* ── Image Viewer ─────────────────────────────────── */
+    .image-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      padding: 4px;
+    }
+    .image-tab {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      border: none;
+      background: transparent;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .image-tab.active {
+      background: var(--accent);
+      color: white;
+    }
+    .image-tab:hover:not(.active) {
+      color: var(--text-primary);
+      background: rgba(255,255,255,0.05);
+    }
+    .image-display {
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      background: #000;
+      min-height: 300px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .image-display img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .image-display .placeholder {
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    /* ── Bubble Table ─────────────────────────────────── */
+    .bubble-table-wrapper {
+      max-height: 400px;
+      overflow-y: auto;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    .bubble-table-wrapper::-webkit-scrollbar { width: 6px; }
+    .bubble-table-wrapper::-webkit-scrollbar-track { background: var(--bg-input); }
+    .bubble-table-wrapper::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .bubble-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .bubble-table thead {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .bubble-table th {
+      padding: 10px 12px;
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-size: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bubble-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(42, 42, 62, 0.5);
+      color: var(--text-secondary);
+    }
+    .bubble-table tr:hover td { background: rgba(108, 99, 255, 0.03); }
+
+    .state-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .state-chip.filled    { background: rgba(34,197,94,0.15); color: var(--green); }
+    .state-chip.empty     { background: rgba(100,116,139,0.15); color: var(--gray); }
+    .state-chip.ambiguous { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+    /* ── Info bar ─────────────────────────────────────── */
+    .info-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      background: var(--bg-input);
+      border-radius: var(--radius-sm);
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .info-bar .info-item { display: flex; align-items: center; gap: 6px; }
+    .info-bar .info-value { color: var(--text-primary); font-weight: 600; }
+
+    /* ── Alert banner ─────────────────────────────────── */
+    .alert {
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .alert.warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+    .alert.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+    .alert.show { display: block; }
+
+    /* ── Spinner ──────────────────────────────────────── */
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 10, 20, 0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      border-radius: var(--radius-sm);
+    }
+    .loading-text { color: var(--text-muted); font-size: 13px; }
+
+    /* ── Right Panel ──────────────────────────────────── */
+    .right-panel { display: flex; flex-direction: column; gap: 20px; }
+
+    /* ── Empty state ──────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+    .empty-state p { font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo">Vision OMR</span>
+      <span class="badge">Testing Dashboard</span>
+    </div>
+    <div class="header-status">
+      <span class="dot"></span>
+      Backend connected — <span id="apiUrl">localhost:8000</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="main">
+
+    <!-- ── Left Panel: Upload + Controls ─────────────── -->
+    <div class="left-panel">
+
+      <!-- Upload Card -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header">📷 Upload OMR Sheet</div>
+        <div class="card-body">
+          <div class="upload-zone" id="uploadZone">
+            <div class="upload-icon">📄</div>
+            <div class="upload-title">Drop your OMR sheet here</div>
+            <div class="upload-hint">or click to browse · JPEG / PNG · max 10 MB</div>
+            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg">
+            <div class="file-preview" id="filePreview" style="display:none;">
+              <img id="previewImg" alt="Preview">
+            </div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <button class="btn btn-primary" id="evaluateBtn" disabled>
+              🔍 Run Evaluation Pipeline
+            </button>
+          </div>
+          <div style="margin-top: 8px;">
+            <button class="btn btn-secondary" id="clearBtn" style="display:none;">
+              ✕ Clear & Reset
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Card -->
+      <div class="card" id="statsCard" style="display:none;">
+        <div class="card-header">📊 Detection Summary</div>
+        <div class="card-body">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-value green" id="filledCount">0</div>
+              <div class="stat-label">Filled</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value gray" id="emptyCount">0</div>
+              <div class="stat-label">Empty</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-value amber" id="ambigCount">0</div>
+              <div class="stat-label">Ambiguous</div>
+            </div>
+          </div>
+
+          <div class="info-bar">
+            <div class="info-item">
+              ⏱ <span class="info-value" id="processingTime">—</span> ms
+            </div>
+            <div class="info-item">
+              🎯 <span class="info-value" id="totalDetections">—</span> detections
+            </div>
+            <div class="info-item">
+              🆔 <span class="info-value" id="usnDetections">—</span> USN
+            </div>
+          </div>
+
+          <div class="alert warning" id="reviewAlert">
+            ⚠️ Manual review required — some bubbles are ambiguous.
+          </div>
+        </div>
+      </div>
+
+      <!-- Bubble Table -->
+      <div class="card" id="tableCard" style="display:none;">
+        <div class="card-header">🔬 Bubble Details</div>
+        <div class="card-body" style="padding: 0;">
+          <div class="bubble-table-wrapper">
+            <table class="bubble-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>State</th>
+                  <th>Fill %</th>
+                  <th>Conf.</th>
+                  <th>Review</th>
+                </tr>
+              </thead>
+              <tbody id="bubbleTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right Panel: Image Viewer ─────────────────── -->
+    <div class="right-panel">
+
+      <div class="card">
+        <div class="card-header">🖼️ Pipeline Visualization</div>
+        <div class="card-body">
+          <div class="image-tabs" id="imageTabs">
+            <button class="image-tab active" data-view="annotated">Annotated</button>
+            <button class="image-tab" data-view="preprocessed">Preprocessed</button>
+            <button class="image-tab" data-view="original">Original</button>
+          </div>
+
+          <div class="image-display" id="imageDisplay">
+            <div class="placeholder" id="imagePlaceholder">
+              <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">🔬</div>
+              <p>Upload an OMR sheet and run the pipeline<br>to see annotated results here.</p>
+            </div>
+            <img id="resultImage" style="display:none;" alt="Result">
+          </div>
+        </div>
+      </div>
+
+      <!-- Error display -->
+      <div class="alert error" id="errorAlert"></div>
+
+    </div>
+  </main>
+
+  <script>
+    // ── State ─────────────────────────────────────────────
+    let selectedFile = null;
+    let resultData = null;
+
+    // ── Elements ──────────────────────────────────────────
+    const uploadZone   = document.getElementById('uploadZone');
+    const fileInput    = document.getElementById('fileInput');
+    const previewImg   = document.getElementById('previewImg');
+    const filePreview  = document.getElementById('filePreview');
+    const evaluateBtn  = document.getElementById('evaluateBtn');
+    const clearBtn     = document.getElementById('clearBtn');
+    const statsCard    = document.getElementById('statsCard');
+    const tableCard    = document.getElementById('tableCard');
+    const resultImage  = document.getElementById('resultImage');
+    const placeholder  = document.getElementById('imagePlaceholder');
+    const imageDisplay = document.getElementById('imageDisplay');
+    const errorAlert   = document.getElementById('errorAlert');
+    const reviewAlert  = document.getElementById('reviewAlert');
+
+    // ── Upload handling ───────────────────────────────────
+    uploadZone.addEventListener('click', () => fileInput.click());
+    uploadZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      uploadZone.classList.add('drag-over');
+    });
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('drag-over');
+    });
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) handleFile(fileInput.files[0]);
+    });
+
+    function handleFile(file) {
+      if (!file.type.startsWith('image/')) {
+        showError('Please upload an image file (JPEG or PNG).');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        showError('File too large. Maximum size is 10 MB.');
+        return;
+      }
+      selectedFile = file;
+      uploadZone.classList.add('has-file');
+      evaluateBtn.disabled = false;
+      clearBtn.style.display = 'block';
+
+      // Show preview
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        filePreview.style.display = 'block';
+        document.querySelector('.upload-icon').style.display = 'none';
+        document.querySelector('.upload-title').textContent = file.name;
+        document.querySelector('.upload-hint').textContent =
+          `${(file.size / 1024).toFixed(0)} KB · ${file.type}`;
+      };
+      reader.readAsDataURL(file);
+      hideError();
+    }
+
+    // ── Clear ─────────────────────────────────────────────
+    clearBtn.addEventListener('click', () => {
+      selectedFile = null;
+      resultData = null;
+      fileInput.value = '';
+      uploadZone.classList.remove('has-file');
+      evaluateBtn.disabled = true;
+      clearBtn.style.display = 'none';
+      filePreview.style.display = 'none';
+      document.querySelector('.upload-icon').style.display = '';
+      document.querySelector('.upload-title').textContent = 'Drop your OMR sheet here';
+      document.querySelector('.upload-hint').textContent = 'or click to browse · JPEG / PNG · max 10 MB';
+      statsCard.style.display = 'none';
+      tableCard.style.display = 'none';
+      resultImage.style.display = 'none';
+      placeholder.style.display = '';
+      reviewAlert.classList.remove('show');
+      hideError();
+    });
+
+    // ── Evaluate ──────────────────────────────────────────
+    evaluateBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      evaluateBtn.disabled = true;
+      evaluateBtn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;margin:0 8px 0 0;"></div> Processing…';
+      hideError();
+
+      // Show loading overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'loading-overlay';
+      overlay.innerHTML = '<div class="spinner"></div><div class="loading-text">Running AI pipeline…</div>';
+      imageDisplay.style.position = 'relative';
+      imageDisplay.appendChild(overlay);
+
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        const resp = await fetch('/debug/evaluate', { method: 'POST', body: formData });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+
+        resultData = await resp.json();
+        renderResults(resultData);
+      } catch (err) {
+        showError(`Pipeline error: ${err.message}`);
+      } finally {
+        evaluateBtn.disabled = false;
+        evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
+        overlay.remove();
+      }
+    });
+
+    // ── Render results ────────────────────────────────────
+    function renderResults(data) {
+      // Stats
+      document.getElementById('filledCount').textContent = data.filled_count;
+      document.getElementById('emptyCount').textContent = data.empty_count;
+      document.getElementById('ambigCount').textContent = data.ambiguous_count;
+      document.getElementById('processingTime').textContent = data.processing_time_ms;
+      document.getElementById('totalDetections').textContent = data.total_detections;
+      document.getElementById('usnDetections').textContent = data.usn_detections;
+      statsCard.style.display = '';
+
+      if (data.needs_manual_review) {
+        reviewAlert.classList.add('show');
+      } else {
+        reviewAlert.classList.remove('show');
+      }
+
+      // Image
+      showImage('annotated');
+
+      // Table
+      const tbody = document.getElementById('bubbleTableBody');
+      tbody.innerHTML = '';
+      (data.bubbles || []).forEach((b, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="color:var(--text-muted)">${i + 1}</td>
+          <td><span class="state-chip ${b.state}">${b.state}</span></td>
+          <td>${(b.fill_ratio * 100).toFixed(1)}%</td>
+          <td>${(b.confidence * 100).toFixed(0)}%</td>
+          <td>${b.needs_review ? '🔍' : '—'}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      tableCard.style.display = '';
+    }
+
+    // ── Image tabs ────────────────────────────────────────
+    document.querySelectorAll('.image-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        if (!resultData) return;
+        document.querySelectorAll('.image-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        showImage(tab.dataset.view);
+      });
+    });
+
+    function showImage(view) {
+      if (!resultData) return;
+      const key = view + '_image_b64';
+      const b64 = resultData[key];
+      if (b64) {
+        resultImage.src = 'data:image/jpeg;base64,' + b64;
+        resultImage.style.display = '';
+        placeholder.style.display = 'none';
+      }
+    }
+
+    // ── Error handling ────────────────────────────────────
+    function showError(msg) {
+      errorAlert.textContent = '❌ ' + msg;
+      errorAlert.classList.add('show');
+    }
+    function hideError() {
+      errorAlert.classList.remove('show');
+    }
+  </script>
+</body>
+</html>
