@@ -1,0 +1,3 @@
+state: filled
+fill_ratio: 1.0000
+bbox: 142, 525, 158, 541

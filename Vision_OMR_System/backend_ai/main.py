@@ -399,6 +399,36 @@ async def debug_evaluate(file: UploadFile = File(...)):
         # Classify
         classifications = classify_all(clean_img, bubble_dets)
 
+        # ── Debug Save ──────────────────────────────────────────────────────
+        debug_dir = Path(__file__).parent / "debug_output"
+        debug_dir.mkdir(exist_ok=True)
+        
+        # Save preprocessed sheet
+        cv2.imwrite(str(debug_dir / "preprocessed_sheet.png"), clean_img)
+        
+        # Save a few sample bubble details to debug folder
+        from core.classification import _extract_inner_region
+        for idx, cr in enumerate(classifications[:15]):
+            det = cr.detection
+            x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
+            roi = clean_img[y1:y2, x1:x2]
+            if roi.size > 0:
+                roi_resized = cv2.resize(roi, (64, 64))
+                gray, mask = _extract_inner_region(roi_resized)
+                _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                masked_binary = cv2.bitwise_and(binary, mask)
+                
+                cv2.imwrite(str(debug_dir / f"bubble_{idx}_roi.png"), roi_resized)
+                cv2.imwrite(str(debug_dir / f"bubble_{idx}_binary.png"), binary)
+                cv2.imwrite(str(debug_dir / f"bubble_{idx}_mask.png"), mask)
+                cv2.imwrite(str(debug_dir / f"bubble_{idx}_masked.png"), masked_binary)
+                
+                # Write text metadata
+                with open(debug_dir / f"bubble_{idx}_meta.txt", "w") as f:
+                    f.write(f"state: {cr.state.value}\n")
+                    f.write(f"fill_ratio: {cr.fill_ratio:.4f}\n")
+                    f.write(f"bbox: {x1}, {y1}, {x2}, {y2}\n")
+
         # Annotate
         annotated = _annotate_image(clean_img, detections, classifications)
 

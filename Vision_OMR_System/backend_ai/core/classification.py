@@ -72,14 +72,18 @@ class ClassificationResult:
 # Thresholds (tunable)
 # ---------------------------------------------------------------------------
 
-# NOTE: OMR bubbles have a printed circle border that contributes ~40%
-# dark pixels even when the bubble is completely empty.  We crop to the
-# inner region and apply a circular mask so only the interior is measured.
+# NOTE: OMR bubbles have a printed circle border that we dynamically locate
+# and exclude. We crop to the detected bubble's inner region and apply a
+# circular mask so only the interior is measured.
 #
 # If dark pixel ratio inside the masked inner ROI exceeds FILL_THRESHOLD → FILLED
-FILL_THRESHOLD: float = 0.55
+FILL_THRESHOLD: float = 0.30
 # Below EMPTY_THRESHOLD → EMPTY  |  between → AMBIGUOUS
-EMPTY_THRESHOLD: float = 0.45
+EMPTY_THRESHOLD: float = 0.15
+
+# Fixed grayscale threshold to separate dark ink/pencil (letters/marks) from
+# the white paper inside the bubble. Values below this are considered ink.
+FIXED_GRAY_THRESHOLD: int = 135
 
 
 # ---------------------------------------------------------------------------
@@ -141,13 +145,27 @@ def classify_all(
 # ---------------------------------------------------------------------------
 
 
-def _crop_roi(image: np.ndarray, det: BubbleDetection) -> np.ndarray:
-    """Crop and resize the bubble region to 64×64 for classification."""
+def _crop_roi(image: np.ndarray, det: BubbleDetection, pad_factor: float = 0.25) -> np.ndarray:
+    """
+    Crop and resize the bubble region to 64×64 for classification.
+    Applies padding on all sides to ensure the printed border of the bubble
+    is fully enclosed in the crop and does not touch the edges.
+    """
     h, w = image.shape[:2]
-    x1 = max(0, int(det.x1))
-    y1 = max(0, int(det.y1))
-    x2 = min(w, int(det.x2))
-    y2 = min(h, int(det.y2))
+    
+    # Bounding box dimensions
+    bw = det.x2 - det.x1
+    bh = det.y2 - det.y1
+    
+    # Apply padding
+    pad_w = int(bw * pad_factor)
+    pad_h = int(bh * pad_factor)
+    
+    x1 = max(0, int(det.x1) - pad_w)
+    y1 = max(0, int(det.y1) - pad_h)
+    x2 = min(w, int(det.x2) + pad_w)
+    y2 = min(h, int(det.y2) + pad_h)
+    
     roi = image[y1:y2, x1:x2]
     if roi.size == 0:
         return np.zeros((64, 64, 3), dtype=np.uint8)
@@ -157,30 +175,55 @@ def _crop_roi(image: np.ndarray, det: BubbleDetection) -> np.ndarray:
 def _extract_inner_region(roi: np.ndarray, shrink: float = 0.35) -> tuple:
     """
     Extract the inner circular region of a bubble, excluding the
-    printed border ring.
+    printed border ring. Uses contour-based dynamic centering and sizing
+    to ensure the border is perfectly ignored even if the crop is shifted or resized.
 
     Parameters
     ----------
     roi     : 64×64 BGR image of the bubble
-    shrink  : fraction to shrink inward from each edge (0.35 = keep
-              the central 30% diameter circle).  The printed border
-              ring typically occupies the outer ~30-35% on each side.
+    shrink  : fraction to shrink inward from the detected bubble radius
+              (0.35 = keep the central 65% radius circle).
 
     Returns
     -------
-    (gray_inner, mask) where gray_inner is the masked grayscale image
+    (gray, mask) where gray is the grayscale image
     and mask is the circular binary mask (255 = inside, 0 = outside).
     """
     size = roi.shape[0]  # 64
     center = size // 2
-    # Inner radius: keep central portion, skip printed border
-    inner_radius = int(center * (1.0 - shrink))
-
-    # Create circular mask
-    mask = np.zeros((size, size), dtype=np.uint8)
-    cv2.circle(mask, (center, center), inner_radius, 255, -1)
 
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+    # Otsu binarization (inverted: dark ink/border → white) to locate bubble structures
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Find contours of the binarized bubble
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Default fallback: center of the image and typical bubble radius
+    cx, cy = float(center), float(center)
+    r = float(center * 0.7)  # e.g., 22.4 pixels for a 64x64 ROI
+
+    # Find the contour that represents the bubble border (closest to the center and of reasonable size)
+    best_contour = None
+    min_dist = float('inf')
+    for c in contours:
+        (ccx, ccy), cr = cv2.minEnclosingCircle(c)
+        # OMR bubbles in a 64x64 crop typically have a radius between 12 and 30 pixels
+        if 12 <= cr <= 30:
+            dist = np.sqrt((ccx - center) ** 2 + (ccy - center) ** 2)
+            if dist < min_dist:
+                min_dist = dist
+                best_contour = c
+
+    if best_contour is not None:
+        (cx, cy), r = cv2.minEnclosingCircle(best_contour)
+
+    # Create circular mask centered exactly on the detected bubble, shrunk to exclude the border
+    mask = np.zeros((size, size), dtype=np.uint8)
+    inner_radius = max(5, int(r * (1.0 - shrink)))
+    cv2.circle(mask, (int(cx), int(cy)), inner_radius, 255, -1)
+
     return gray, mask
 
 
@@ -192,17 +235,14 @@ def _classify_with_threshold(
 
     Strategy:
       1. Extract the inner circular region (excludes printed border)
-      2. Apply Otsu binarization on the inner region
+      2. Apply a robust fixed threshold of 135 to classify dark ink/marks
       3. Compute fill ratio = dark pixels / total pixels inside mask
       4. Compare against tuned thresholds
-
-    This avoids the printed circle border inflating the fill ratio
-    and causing empty bubbles to be classified as filled.
     """
     gray, mask = _extract_inner_region(roi)
 
-    # Otsu binarization (inverted: dark ink → white)
-    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Fixed thresholding (inverted: dark ink/pencil → white)
+    _, binary = cv2.threshold(gray, FIXED_GRAY_THRESHOLD, 255, cv2.THRESH_BINARY_INV)
 
     # Only count pixels inside the circular mask
     masked_binary = cv2.bitwise_and(binary, mask)
