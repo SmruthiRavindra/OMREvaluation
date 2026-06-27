@@ -17,7 +17,8 @@ WORKDIR /install
 #     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --default-timeout=1000 --no-cache-dir --prefix=/install/deps -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --default-timeout=1000 --no-cache-dir --prefix=/install/deps -r requirements.txt
 
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────
@@ -27,10 +28,11 @@ LABEL maintainer="Vision OMR System"
 LABEL description="FastAPI backend for OMR sheet evaluation"
 
 # Runtime system deps for OpenCV headless (if needed, commented out due to DNS issues)
-# RUN apt-get update && apt-get install -y --no-install-recommends \
-#         libgl1 \
-#         libglib2.0-0 \
-#     && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        libxcb1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
