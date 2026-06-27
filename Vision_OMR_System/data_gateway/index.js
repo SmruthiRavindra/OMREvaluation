@@ -32,6 +32,14 @@ import {
   getHistory,
 } from './controllers/evaluationController.js';
 
+import {
+  createSession,
+  submitStudentResult,
+  getSessionResults,
+  downloadReport,
+  submitAbsentees
+} from './controllers/reportController.js';
+
 // ── App setup ──────────────────────────────────────────────────────────────
 const app  = express();
 const PORT = Number(process.env.PORT ?? 3000);
@@ -64,6 +72,13 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'data-gatewa
 app.post('/api/evaluate', upload.single('file'), evaluateSheet);
 app.post('/api/submit',   submitResults);
 app.get('/api/history',   getHistory);
+
+// Session & Reports
+app.post('/api/sessions', createSession);
+app.post('/api/results', submitStudentResult);
+app.post('/api/sessions/:sessionId/absentees', submitAbsentees);
+app.get('/api/sessions/:sessionId/results', getSessionResults);
+app.get('/api/reports/download/:sessionId', downloadReport);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {

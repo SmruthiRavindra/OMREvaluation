@@ -450,9 +450,19 @@
       <div class="card" style="margin-bottom: 20px;">
         <div class="card-header">🔑 Answer Key & Grading</div>
         <div class="card-body">
-          <div style="margin-bottom: 12px;">
-            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
-            <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
+              <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Subject</label>
+              <input type="text" id="subjectInput" value="Mathematics" placeholder="e.g. Mathematics" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Section</label>
+              <input type="text" id="sectionInput" value="A" placeholder="e.g. Section A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+            </div>
           </div>
           <div style="margin-bottom: 12px;">
             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
@@ -464,6 +474,41 @@
             </button>
           </div>
           <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+        </div>
+      </div>
+
+      <!-- Data Gateway & Reports Card -->
+      <div class="card" style="margin-bottom: 20px;">
+        <div class="card-header">🗄️ Database & Reports</div>
+        <div class="card-body">
+          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students</label>
+              <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+            </div>
+          </div>
+          <div style="margin-bottom: 12px;">
+             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
+             <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+          </div>
+
+          <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, var(--green), #059669);">
+            📤 Submit Current Result to DB
+          </button>
+          
+          <button class="btn btn-primary" id="finalizeSessionBtn" style="margin-bottom: 12px; background: linear-gradient(135deg, var(--accent), #8b5cf6);">
+            🏁 Finalize Session (Save Absentees)
+          </button>
+          
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">
+              📊 Download Excel
+            </button>
+            <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">
+              📄 Download PDF
+            </button>
+          </div>
+          <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 12px; text-align: center;"></div>
         </div>
       </div>
 
@@ -778,6 +823,8 @@
       reviewAlert.classList.remove('show');
       scoreSection.style.display = 'none';
       btnShowGrading.style.display = 'none';
+      document.getElementById('submitDbBtn').disabled = true;
+      document.getElementById('dbStatus').textContent = '';
       showBubblesTab();
       hideError();
     });
@@ -899,6 +946,10 @@
         reviewAlert.classList.remove('show');
       }
 
+      // Enable submit button
+      document.getElementById('submitDbBtn').disabled = false;
+      document.getElementById('dbStatus').textContent = '';
+      
       // Populate Grading
       if (data.score_report) {
         const report = data.score_report;
@@ -1016,6 +1067,118 @@
         placeholder.style.display = 'none';
       }
     }
+
+    // ── Data Gateway & Reports ────────────────────────────
+    const GATEWAY_URL = 'http://localhost:3000';
+    
+    document.getElementById('submitDbBtn').addEventListener('click', async () => {
+      if (!resultData || !resultData.score_report) {
+        document.getElementById('dbStatus').textContent = '❌ No graded result to submit.';
+        document.getElementById('dbStatus').style.color = 'var(--red)';
+        return;
+      }
+      
+      const submitBtn = document.getElementById('submitDbBtn');
+      submitBtn.disabled = true;
+      const statusEl = document.getElementById('dbStatus');
+      statusEl.textContent = 'Submitting...';
+      statusEl.style.color = 'var(--text-muted)';
+      
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      const subject = document.getElementById('subjectInput').value.trim() || 'Evaluation Session';
+      const section = document.getElementById('sectionInput').value.trim() || '';
+      const report = resultData.score_report;
+      
+      const expectedStudents = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
+      
+      const payload = {
+        session_id: sessionId,
+        usn: resultData.usn || 'UNKNOWN',
+        score: report.correct,
+        total: report.total_questions,
+        correct: report.correct,
+        incorrect: report.incorrect,
+        unanswered: report.unanswered,
+        multiple_marked: report.multiple_marked,
+        score_percent: report.score_percent,
+        per_question: report.per_question,
+        expected_students: expectedStudents
+      };
+      
+      try {
+        // First ensure session exists (create if not)
+        await fetch(`${GATEWAY_URL}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            id: sessionId, 
+            subject: subject,
+            section: section,
+            total_questions: report.total_questions,
+            expected_students: expectedStudents
+          })
+        }).catch(e => console.warn('Session may already exist', e));
+        
+        // Then submit result
+        const resp = await fetch(`${GATEWAY_URL}/api/results`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        
+        statusEl.textContent = `✅ Result saved to database!`;
+        statusEl.style.color = 'var(--green)';
+      } catch (err) {
+        statusEl.textContent = `❌ Error: Could not connect to Data Gateway on port 3000.`;
+        statusEl.style.color = 'var(--red)';
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+    
+    document.getElementById('finalizeSessionBtn').addEventListener('click', async () => {
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      const absenteesStr = document.getElementById('absentUsnsInput').value;
+      const statusEl = document.getElementById('dbStatus');
+      
+      const usns = absenteesStr.split(',').map(s => s.trim()).filter(Boolean);
+      
+      if (usns.length === 0) {
+        statusEl.textContent = 'No absentees to save.';
+        statusEl.style.color = 'var(--text-muted)';
+        return;
+      }
+
+      statusEl.textContent = 'Saving absentees...';
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/absentees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, usns })
+        });
+        
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        
+        statusEl.textContent = `✅ Saved ${data.saved} absent students!`;
+        statusEl.style.color = 'var(--green)';
+      } catch (err) {
+        statusEl.textContent = `❌ Error: ${err.message}`;
+        statusEl.style.color = 'var(--red)';
+      }
+    });
+    
+    document.getElementById('downloadExcelBtn').addEventListener('click', () => {
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=excel`, '_blank');
+    });
+    
+    document.getElementById('downloadPdfBtn').addEventListener('click', () => {
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf`, '_blank');
+    });
 
     // ── Error handling ────────────────────────────────────
     function showError(msg) {
