@@ -4,9 +4,11 @@ preprocess.py
 OpenCV-based image pre-processing pipeline for OMR sheet normalization.
 
 Steps:
-  1. Bilateral filter  – noise reduction preserving edges
-  2. Adaptive threshold / Canny edge detection
-  3. Homography (perspective warp) – corrects camera tilt / skew
+  1. Upscale small mobile images to a minimum working resolution
+  2. CLAHE contrast enhancement for uneven mobile lighting
+  3. Bilateral filter – noise reduction preserving edges
+  4. Adaptive threshold / Canny edge detection
+  5. Homography (perspective warp) – corrects camera tilt / skew
 """
 
 import cv2
@@ -14,13 +16,16 @@ import numpy as np
 from typing import Tuple
 
 
+# Minimum width we want to work with for reliable bubble detection
+MIN_WIDTH = 800
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def preprocess_image(image_bytes: bytes) -> np.ndarray:
     """
-    Full pre-processing pipeline: decode → denoise → warp.
+    Full pre-processing pipeline: decode → upscale → enhance → denoise → warp.
 
     Parameters
     ----------
@@ -33,6 +38,8 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
         Perspective-corrected, denoised BGR image ready for YOLO inference.
     """
     img = _decode(image_bytes)
+    img = _ensure_min_resolution(img)
+    img = _enhance_contrast(img)
     img = _bilateral_filter(img)
     img = _perspective_warp(img)
     return img
@@ -49,6 +56,35 @@ def _decode(image_bytes: bytes) -> np.ndarray:
     if img is None:
         raise ValueError("Failed to decode image bytes. Ensure JPEG/PNG input.")
     return img
+
+
+def _ensure_min_resolution(img: np.ndarray) -> np.ndarray:
+    """
+    Upscale very small mobile images so that bubbles are large enough
+    for reliable classification. Low-res cameras (e.g., 640×480) produce
+    bubbles that are only ~8 pixels wide, making fill-ratio unreliable.
+    """
+    h, w = img.shape[:2]
+    if w < MIN_WIDTH:
+        scale = MIN_WIDTH / w
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+    return img
+
+
+def _enhance_contrast(img: np.ndarray) -> np.ndarray:
+    """
+    Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to
+    normalize uneven lighting from mobile camera flashes and shadows.
+    This is applied per-channel in LAB color space so colors are preserved.
+    """
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    l = clahe.apply(l)
+    lab = cv2.merge([l, a, b])
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
 
 def _bilateral_filter(img: np.ndarray) -> np.ndarray:

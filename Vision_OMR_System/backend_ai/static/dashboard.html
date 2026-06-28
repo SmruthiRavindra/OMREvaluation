@@ -419,36 +419,9 @@
     <!-- ── Left Panel: Upload + Controls ─────────────── -->
     <div class="left-panel">
 
-      <!-- Upload Card -->
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">📷 Upload OMR Sheet</div>
-        <div class="card-body">
-          <div class="upload-zone" id="uploadZone">
-            <div class="upload-icon">📄</div>
-            <div class="upload-title">Drop your OMR sheet here</div>
-            <div class="upload-hint">or click to browse · JPEG / PNG · max 10 MB</div>
-            <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg">
-            <div class="file-preview" id="filePreview" style="display:none;">
-              <img id="previewImg" alt="Preview">
-            </div>
-          </div>
-
-          <div style="margin-top: 16px;">
-            <button class="btn btn-primary" id="evaluateBtn" disabled>
-              🔍 Run Evaluation Pipeline
-            </button>
-          </div>
-          <div style="margin-top: 8px;">
-            <button class="btn btn-secondary" id="clearBtn" style="display:none;">
-              ✕ Clear & Reset
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Answer Key Card -->
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">🔑 Answer Key & Grading</div>
+      <!-- Step 1: Session Setup Card -->
+      <div class="card" style="margin-bottom: 20px;" id="step1Card">
+        <div class="card-header">1️⃣ Step 1: Session Setup</div>
         <div class="card-body">
           <div style="margin-bottom: 12px; display: flex; gap: 12px;">
             <div style="flex: 1;">
@@ -464,26 +437,9 @@
               <input type="text" id="sectionInput" value="A" placeholder="e.g. Section A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
           </div>
-          <div style="margin-bottom: 12px;">
-            <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
-            <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
-          </div>
-          <div>
-            <button class="btn btn-secondary" id="saveAnswerKeyBtn">
-              💾 Save Answer Key
-            </button>
-          </div>
-          <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
-        </div>
-      </div>
-
-      <!-- Data Gateway & Reports Card -->
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">🗄️ Database & Reports</div>
-        <div class="card-body">
           <div style="margin-bottom: 12px; display: flex; gap: 12px;">
             <div style="flex: 1;">
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students</label>
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students in Class</label>
               <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
           </div>
@@ -491,24 +447,92 @@
              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
              <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
           </div>
+          <button class="btn btn-primary" id="initSessionBtn" style="background: linear-gradient(135deg, var(--accent), #8b5cf6);">
+            🚀 Initialize Session
+          </button>
+          <div id="initSessionStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+        </div>
+      </div>
 
-          <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, var(--green), #059669);">
-            📤 Submit Current Result to DB
-          </button>
-          
-          <button class="btn btn-primary" id="finalizeSessionBtn" style="margin-bottom: 12px; background: linear-gradient(135deg, var(--accent), #8b5cf6);">
-            🏁 Finalize Session (Save Absentees)
-          </button>
-          
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">
-              📊 Download Excel
-            </button>
-            <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">
-              📄 Download PDF
-            </button>
+      <!-- Container for subsequent steps, disabled by default -->
+      <div id="workflowStepsContainer" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease;">
+      
+        <!-- Step 2: Answer Key Card -->
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-header">🔑 Step 2: Answer Key</div>
+          <div class="card-body">
+            <div style="margin-bottom: 12px;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
+              <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+            </div>
+            <div>
+              <button class="btn btn-secondary" id="saveAnswerKeyBtn">
+                💾 Save Answer Key
+              </button>
+            </div>
+            <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
           </div>
-          <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 12px; text-align: center;"></div>
+        </div>
+
+        <!-- Step 3: Upload Card -->
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-header">📷 Step 3: Upload OMR Sheet</div>
+          <div class="card-body">
+            <div class="upload-zone" id="uploadZone">
+              <div class="upload-icon">📄</div>
+              <div class="upload-title">Drop your OMR sheet here</div>
+              <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 50 pages</div>
+              <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf">
+              <div class="file-preview" id="filePreview" style="display:none;">
+                <img id="previewImg" alt="Preview" style="display:none;">
+                <div id="pdfPreview" style="display:none; color: var(--accent); padding: 40px 0; font-size: 14px; text-align: center; font-weight: bold;">
+                  📑 PDF Selected (Pages will be extracted)
+                </div>
+              </div>
+            </div>
+
+            <div style="margin-top: 16px;">
+              <button class="btn btn-primary" id="evaluateBtn" disabled>
+                🔍 Run Evaluation Pipeline
+              </button>
+            </div>
+            
+            <!-- Page Count Validation Alert -->
+            <div class="alert error" id="pageCountAlert" style="margin-top: 16px; display: none;">
+              <strong>⚠️ Page Count Mismatch!</strong><br>
+              <span id="pageCountAlertMsg"></span>
+            </div>
+
+            <div style="margin-top: 8px;">
+              <button class="btn btn-secondary" id="clearBtn" style="display:none;">
+                ✕ Clear & Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 4: Review & Submit Card -->
+        <div class="card" style="margin-bottom: 20px;">
+          <div class="card-header">🗄️ Step 4: Review & Submit</div>
+          <div class="card-body">
+            <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, #f59e0b, #d97706); font-size: 13px;">
+              ✋ Review & Confirm Before Saving
+            </button>
+            <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, var(--green), #059669); display: none;">
+              📤 Submit Confirmed Result to DB
+            </button>
+            <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
+            
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">
+                📊 Download Excel
+              </button>
+              <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">
+                📄 Download PDF
+              </button>
+            </div>
+            <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 12px; text-align: center;"></div>
+          </div>
         </div>
       </div>
 
@@ -538,8 +562,9 @@
             <div class="info-item">
               🎯 <span class="info-value" id="totalDetections">—</span> detections
             </div>
-            <div class="info-item">
-              🆔 Student: <span class="info-value" id="usnText" style="color:var(--accent)">—</span>
+            <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
+              🆔 Student: 
+              <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
             </div>
           </div>
 
@@ -652,6 +677,38 @@
       <div class="alert error" id="errorAlert"></div>
 
     </div>
+
+    <!-- ── Teacher Confirmation Modal ──────────────── -->
+    <div id="confirmModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); overflow-y:auto;">
+      <div style="max-width:600px; margin:40px auto; background:var(--bg-card); border-radius:var(--radius); border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+        <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+          <span style="font-size:15px; font-weight:700;">✋ Teacher Review & Confirmation</span>
+          <button id="closeModalBtn" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
+        </div>
+        <div style="padding:20px;">
+          <!-- USN Confirmation -->
+          <div style="margin-bottom:16px;">
+            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">Student USN (Edit if OCR is wrong)</label>
+            <input type="text" id="modalUsnInput" style="width:100%; padding:10px 14px; border-radius:8px; border:2px solid var(--accent); background:var(--bg-input); color:var(--accent); font-family:monospace; font-size:18px; font-weight:bold; text-align:center; letter-spacing:2px;" placeholder="e.g. 4VV22IS009">
+          </div>
+          <!-- Score Summary -->
+          <div id="modalScoreSummary" style="display:flex; gap:8px; margin-bottom:16px;"></div>
+          <!-- Per-question review table -->
+          <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">Per-Question Grading (Override if needed)</div>
+          <div style="max-height:300px; overflow-y:auto; border:1px solid var(--border); border-radius:8px;">
+            <table class="bubble-table" style="font-size:12px;">
+              <thead><tr><th>Q#</th><th>Marked</th><th>Correct</th><th>Status</th><th>Override</th></tr></thead>
+              <tbody id="modalGradingBody"></tbody>
+            </table>
+          </div>
+          <!-- Action buttons -->
+          <div style="display:flex; gap:10px; margin-top:20px;">
+            <button id="modalConfirmBtn" class="btn btn-primary" style="flex:2; background:linear-gradient(135deg, var(--green), #059669); font-size:14px; padding:12px;">✅ Confirm & Approve</button>
+            <button id="modalCancelBtn" class="btn btn-secondary" style="flex:1; font-size:14px; padding:12px;">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -717,12 +774,12 @@
     });
 
     function handleFile(file) {
-      if (!file.type.startsWith('image/')) {
-        showError('Please upload an image file (JPEG or PNG).');
+      if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+        showError('Please upload an image file (JPEG/PNG) or a PDF.');
         return;
       }
-      if (file.size > 10 * 1024 * 1024) {
-        showError('File too large. Maximum size is 10 MB.');
+      if (file.size > 50 * 1024 * 1024) {
+        showError('File too large. Maximum size is 50 MB.');
         return;
       }
       selectedFile = file;
@@ -730,17 +787,28 @@
       evaluateBtn.disabled = false;
       clearBtn.style.display = 'block';
 
-      // Show preview
-      const reader = new FileReader();
-      reader.onload = e => {
-        previewImg.src = e.target.result;
-        filePreview.style.display = 'block';
-        document.querySelector('.upload-icon').style.display = 'none';
-        document.querySelector('.upload-title').textContent = file.name;
-        document.querySelector('.upload-hint').textContent =
-          `${(file.size / 1024).toFixed(0)} KB · ${file.type}`;
-      };
-      reader.readAsDataURL(file);
+      // Hide default icons
+      document.querySelector('.upload-icon').style.display = 'none';
+      document.querySelector('.upload-title').textContent = file.name;
+      document.querySelector('.upload-hint').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type}`;
+      
+      filePreview.style.display = 'block';
+      const pImg = document.getElementById('previewImg');
+      const pPdf = document.getElementById('pdfPreview');
+
+      if (file.type === 'application/pdf') {
+        pImg.style.display = 'none';
+        pPdf.style.display = 'block';
+      } else {
+        // Show preview
+        pPdf.style.display = 'none';
+        pImg.style.display = 'block';
+        const reader = new FileReader();
+        reader.onload = e => {
+          pImg.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
       hideError();
     }
 
@@ -808,14 +876,15 @@
     clearBtn.addEventListener('click', () => {
       selectedFile = null;
       resultData = null;
+      window.batchResults = null;
       fileInput.value = '';
       uploadZone.classList.remove('has-file');
       evaluateBtn.disabled = true;
       clearBtn.style.display = 'none';
       filePreview.style.display = 'none';
       document.querySelector('.upload-icon').style.display = '';
-      document.querySelector('.upload-title').textContent = 'Drop your OMR sheet here';
-      document.querySelector('.upload-hint').textContent = 'or click to browse · JPEG / PNG · max 10 MB';
+      document.querySelector('.upload-title').style.display = 'block';
+      document.querySelector('.upload-hint').style.display = 'block';
       statsCard.style.display = 'none';
       tableCard.style.display = 'none';
       resultImage.style.display = 'none';
@@ -852,14 +921,48 @@
         formData.append('num_columns', '2');
         formData.append('options', 'ABCD');
 
-        const resp = await fetch('/debug/evaluate', { method: 'POST', body: formData });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({}));
-          throw new Error(err.detail || `HTTP ${resp.status}`);
+        if (selectedFile.type === 'application/pdf') {
+          // Use batch endpoint for PDFs
+          const resp = await fetch('/evaluate-batch', { method: 'POST', body: formData });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+          }
+          const batchData = await resp.json();
+          // For now, if it's a batch PDF, just show an alert that batch processing is complete.
+          // Let's grab the first page's result data just to populate the single-page view for now.
+          if (batchData.results && batchData.results.length > 0) {
+             window.batchResults = batchData.results;
+             resultData = batchData.results[0]; // For UI compatibility in this simple version
+             renderResults(resultData);
+             
+             // Page Count Validation
+             const expectedCount = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
+             const absentees = document.getElementById('absentUsnsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+             const targetCount = expectedCount - absentees.length;
+             
+             const pageCountAlert = document.getElementById('pageCountAlert');
+             if (batchData.total_pages !== targetCount) {
+               document.getElementById('pageCountAlertMsg').textContent = `Expected ${targetCount} sheets (${expectedCount} students - ${absentees.length} absent), but processed ${batchData.total_pages} pages!`;
+               pageCountAlert.style.display = 'block';
+               alert(`Warning: Page count mismatch! Expected ${targetCount} but got ${batchData.total_pages}.`);
+             } else {
+               pageCountAlert.style.display = 'none';
+               alert(`Batch processing complete! Processed ${batchData.total_pages} pages perfectly matching expected count. Click "Submit to Database" to save all students.`);
+             }
+          } else {
+             throw new Error("No pages extracted from PDF.");
+          }
+        } else {
+          // Standard single image flow
+          const resp = await fetch('/debug/evaluate', { method: 'POST', body: formData });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+          }
+          resultData = await resp.json();
+          renderResults(resultData);
         }
-
-        resultData = await resp.json();
-        renderResults(resultData);
       } catch (err) {
         showError(`Pipeline error: ${err.message}`);
       } finally {
@@ -937,7 +1040,18 @@
       document.getElementById('totalDetections').textContent = data.total_detections;
       
       // Populate USN
-      usnText.textContent = data.usn || 'NOT DETECTED';
+      const usnInput = document.getElementById('usnInput');
+      if (data.usn && data.usn !== 'UNKNOWN') {
+        usnInput.value = data.usn;
+      } else {
+        usnInput.value = '';
+      }
+      
+      // Keep resultData in sync if user types
+      usnInput.addEventListener('input', (e) => {
+        if (resultData) resultData.usn = e.target.value.trim().toUpperCase() || 'UNKNOWN';
+      });
+
       statsCard.style.display = '';
 
       if (data.needs_manual_review) {
@@ -946,9 +1060,13 @@
         reviewAlert.classList.remove('show');
       }
 
-      // Enable submit button
-      document.getElementById('submitDbBtn').disabled = false;
+       // Enable review button (NOT submit directly)
+      document.getElementById('reviewConfirmBtn').disabled = false;
+      document.getElementById('submitDbBtn').style.display = 'none';
+      document.getElementById('submitDbBtn').disabled = true;
+      document.getElementById('confirmationBadge').style.display = 'none';
       document.getElementById('dbStatus').textContent = '';
+      window._teacherConfirmed = false;
       
       // Populate Grading
       if (data.score_report) {
@@ -1035,16 +1153,68 @@
       tbody.innerHTML = '';
       (data.bubbles || []).forEach((b, i) => {
         const tr = document.createElement('tr');
+        
+        let reviewCell = b.needs_review ? '🔍' : '—';
+        if (b.needs_review) {
+          reviewCell = `
+            <div style="display:flex; gap:4px;">
+              <button class="btn btn-secondary override-bubble-btn" data-index="${i}" data-action="filled" style="padding: 2px 6px; font-size: 10px;">✓ Fill</button>
+              <button class="btn btn-secondary override-bubble-btn" data-index="${i}" data-action="empty" style="padding: 2px 6px; font-size: 10px;">✗ Empty</button>
+            </div>
+          `;
+        }
+
         tr.innerHTML = `
           <td style="color:var(--text-muted)">${i + 1}</td>
           <td><span class="state-chip ${b.state}">${b.state}</span></td>
           <td>${(b.fill_ratio * 100).toFixed(1)}%</td>
           <td>${(b.confidence * 100).toFixed(0)}%</td>
-          <td>${b.needs_review ? '🔍' : '—'}</td>
+          <td>${reviewCell}</td>
         `;
         tbody.appendChild(tr);
       });
       tableCard.style.display = '';
+
+      // Bind override buttons
+      document.querySelectorAll('.override-bubble-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          const index = parseInt(e.target.dataset.index);
+          const action = e.target.dataset.action;
+          
+          // Update bubble state locally
+          resultData.bubbles[index].state = action;
+          resultData.bubbles[index].needs_review = false;
+          
+          const origText = e.target.textContent;
+          e.target.textContent = '...';
+          
+          try {
+            const reqPayload = {
+              session_id: document.getElementById('sessionIdInput').value.trim() || 'default',
+              questions_per_column: 15,
+              num_columns: 2,
+              options: "ABCD",
+              bubbles: resultData.bubbles
+            };
+            
+            const resp = await fetch('/re-score', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(reqPayload)
+            });
+            if (!resp.ok) throw new Error("Failed to re-score sheet");
+            
+            const scoreResp = await resp.json();
+            resultData.score_report = scoreResp;
+            
+            // Re-render UI
+            renderResults(resultData);
+          } catch (err) {
+            alert(err.message);
+            renderResults(resultData);
+          }
+        });
+      });
     }
 
     // ── Image tabs ────────────────────────────────────────
@@ -1072,7 +1242,14 @@
     const GATEWAY_URL = 'http://localhost:3000';
     
     document.getElementById('submitDbBtn').addEventListener('click', async () => {
-      if (!resultData || !resultData.score_report) {
+      let itemsToSubmit = [];
+      if (window.batchResults && window.batchResults.length > 0) {
+        itemsToSubmit = window.batchResults;
+      } else if (resultData) {
+        itemsToSubmit = [resultData];
+      }
+
+      if (itemsToSubmit.length === 0 || !itemsToSubmit[0].score_report) {
         document.getElementById('dbStatus').textContent = '❌ No graded result to submit.';
         document.getElementById('dbStatus').style.color = 'var(--red)';
         return;
@@ -1081,54 +1258,72 @@
       const submitBtn = document.getElementById('submitDbBtn');
       submitBtn.disabled = true;
       const statusEl = document.getElementById('dbStatus');
-      statusEl.textContent = 'Submitting...';
+      statusEl.textContent = `Submitting ${itemsToSubmit.length} results...`;
       statusEl.style.color = 'var(--text-muted)';
       
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
       const subject = document.getElementById('subjectInput').value.trim() || 'Evaluation Session';
       const section = document.getElementById('sectionInput').value.trim() || '';
-      const report = resultData.score_report;
-      
       const expectedStudents = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
-      
-      const payload = {
-        session_id: sessionId,
-        usn: resultData.usn || 'UNKNOWN',
-        score: report.correct,
-        total: report.total_questions,
-        correct: report.correct,
-        incorrect: report.incorrect,
-        unanswered: report.unanswered,
-        multiple_marked: report.multiple_marked,
-        score_percent: report.score_percent,
-        per_question: report.per_question,
-        expected_students: expectedStudents
-      };
       
       try {
         // First ensure session exists (create if not)
-        await fetch(`${GATEWAY_URL}/api/sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            id: sessionId, 
-            subject: subject,
-            section: section,
-            total_questions: report.total_questions,
+        try {
+          const checkResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`);
+          if (checkResp.status === 404) {
+            await fetch(`${GATEWAY_URL}/api/sessions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                id: sessionId, 
+                subject: subject,
+                section: section,
+                total_questions: itemsToSubmit[0].score_report.total_questions,
+                expected_students: expectedStudents
+              })
+            });
+          }
+        } catch(e) { console.warn(e); }
+        
+        let successCount = 0;
+        // Then submit each result
+        for (const item of itemsToSubmit) {
+          const report = item.score_report;
+          if (!report) continue;
+          
+          let currentUsn = item.usn || 'UNKNOWN';
+          // Ensure we grab any manual edits from the UI if this is the currently viewed item
+          if (item === resultData) {
+            const uiUsn = document.getElementById('usnInput').value.trim().toUpperCase();
+            if (uiUsn) currentUsn = uiUsn;
+          }
+
+          const payload = {
+            session_id: sessionId,
+            usn: currentUsn,
+            score: report.correct,
+            total: report.total_questions,
+            correct: report.correct,
+            incorrect: report.incorrect,
+            unanswered: report.unanswered,
+            multiple_marked: report.multiple_marked,
+            score_percent: report.score_percent,
+            per_question: report.per_question,
             expected_students: expectedStudents
-          })
-        }).catch(e => console.warn('Session may already exist', e));
+          };
+          
+          const resp = await fetch(`${GATEWAY_URL}/api/results`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          
+          if (resp.ok) {
+             successCount++;
+          }
+        }
         
-        // Then submit result
-        const resp = await fetch(`${GATEWAY_URL}/api/results`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        
-        statusEl.textContent = `✅ Result saved to database!`;
+        statusEl.textContent = `✅ Saved ${successCount}/${itemsToSubmit.length} results to database!`;
         statusEl.style.color = 'var(--green)';
       } catch (err) {
         statusEl.textContent = `❌ Error: Could not connect to Data Gateway on port 3000.`;
@@ -1138,32 +1333,70 @@
       }
     });
     
-    document.getElementById('finalizeSessionBtn').addEventListener('click', async () => {
+    document.getElementById('initSessionBtn').addEventListener('click', async () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
       const absenteesStr = document.getElementById('absentUsnsInput').value;
-      const statusEl = document.getElementById('dbStatus');
+      const statusEl = document.getElementById('initSessionStatus');
       
       const usns = absenteesStr.split(',').map(s => s.trim()).filter(Boolean);
+      const expectedStudents = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
       
-      if (usns.length === 0) {
-        statusEl.textContent = 'No absentees to save.';
-        statusEl.style.color = 'var(--text-muted)';
-        return;
+      if (expectedStudents <= 0) {
+         statusEl.textContent = '❌ Expected students must be > 0';
+         statusEl.style.color = 'var(--red)';
+         return;
       }
 
-      statusEl.textContent = 'Saving absentees...';
+      statusEl.textContent = 'Initializing Session...';
       try {
-        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/absentees`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, usns })
-        });
+        const subject = document.getElementById('subjectInput').value.trim() || 'Evaluation Session';
+        const section = document.getElementById('sectionInput').value.trim() || '';
         
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
+        // Ensure session exists
+        try {
+          const checkResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`);
+          if (checkResp.status === 404) {
+            await fetch(`${GATEWAY_URL}/api/sessions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                id: sessionId, 
+                subject: subject,
+                section: section,
+                total_questions: 30, // Fallback if no result was uploaded yet
+                expected_students: expectedStudents
+              })
+            });
+          }
+        } catch (e) { console.warn(e); }
+
+        // Submit absentees if any
+        if (usns.length > 0) {
+          const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/absentees`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, usns })
+          });
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        }
         
-        statusEl.textContent = `✅ Saved ${data.saved} absent students!`;
+        statusEl.textContent = `✅ Session initialized. ${usns.length} absentees saved!`;
         statusEl.style.color = 'var(--green)';
+        
+        // Unlock Step 2
+        document.getElementById('workflowStepsContainer').style.opacity = '1';
+        document.getElementById('workflowStepsContainer').style.pointerEvents = 'auto';
+        
+        // Lock Step 1
+        const initBtn = document.getElementById('initSessionBtn');
+        document.getElementById('sessionIdInput').disabled = true;
+        document.getElementById('subjectInput').disabled = true;
+        document.getElementById('sectionInput').disabled = true;
+        document.getElementById('expectedStudentsInput').disabled = true;
+        document.getElementById('absentUsnsInput').disabled = true;
+        initBtn.disabled = true;
+        initBtn.textContent = '🔒 Session Locked';
+        
       } catch (err) {
         statusEl.textContent = `❌ Error: ${err.message}`;
         statusEl.style.color = 'var(--red)';
@@ -1188,6 +1421,147 @@
     function hideError() {
       errorAlert.classList.remove('show');
     }
+    // ── Teacher Confirmation Modal Logic ────────────────
+    const confirmModal = document.getElementById('confirmModal');
+    const modalUsnInput = document.getElementById('modalUsnInput');
+    const modalScoreSummary = document.getElementById('modalScoreSummary');
+    const modalGradingBody = document.getElementById('modalGradingBody');
+    
+    function openConfirmModal() {
+      if (!resultData || !resultData.score_report) {
+        alert('No graded result to review. Please run the evaluation pipeline first.');
+        return;
+      }
+      
+      const report = resultData.score_report;
+      const currentUsn = document.getElementById('usnInput').value.trim() || resultData.usn || 'UNKNOWN';
+      
+      // Fill USN
+      modalUsnInput.value = currentUsn;
+      
+      // Fill score summary
+      const correct = report.per_question.filter(q => q.status === 'correct').length;
+      const incorrect = report.per_question.filter(q => q.status === 'incorrect').length;
+      const unanswered = report.per_question.filter(q => q.status === 'unanswered' || q.status === 'empty').length;
+      const multi = report.per_question.filter(q => q.status === 'multiple_marked').length;
+      const total = report.total_questions;
+      const pct = total > 0 ? ((correct / total) * 100).toFixed(1) : 0;
+      
+      modalScoreSummary.innerHTML = `
+        <div style="flex:1; background:var(--bg-input); padding:10px; border-radius:8px; text-align:center; border:1px solid var(--border);">
+          <div style="font-size:20px; font-weight:800; color:var(--green);">${correct}</div>
+          <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">Correct</div>
+        </div>
+        <div style="flex:1; background:var(--bg-input); padding:10px; border-radius:8px; text-align:center; border:1px solid var(--border);">
+          <div style="font-size:20px; font-weight:800; color:var(--red);">${incorrect}</div>
+          <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">Incorrect</div>
+        </div>
+        <div style="flex:1; background:var(--bg-input); padding:10px; border-radius:8px; text-align:center; border:1px solid var(--border);">
+          <div style="font-size:20px; font-weight:800; color:var(--gray);">${unanswered}</div>
+          <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">Unanswered</div>
+        </div>
+        <div style="flex:1; background:var(--bg-input); padding:10px; border-radius:8px; text-align:center; border:1px solid var(--border);">
+          <div style="font-size:20px; font-weight:800; color:var(--amber);">${multi}</div>
+          <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">Multiple</div>
+        </div>
+        <div style="flex:1; background:var(--bg-input); padding:10px; border-radius:8px; text-align:center; border:1px solid var(--border);">
+          <div style="font-size:20px; font-weight:800; color:${parseFloat(pct) >= 40 ? 'var(--green)' : 'var(--red)'};">${pct}%</div>
+          <div style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">Score</div>
+        </div>
+      `;
+      
+      // Fill per-question table with overrides
+      modalGradingBody.innerHTML = '';
+      (report.per_question || []).forEach(q => {
+        const tr = document.createElement('tr');
+        const markedText = q.marked_options.length > 0 ? q.marked_options.join(', ') : '\u2014';
+        const correctText = q.correct_option || '\u2014';
+        
+        let chipClass = 'empty';
+        let chipColor = '';
+        if (q.status === 'correct') { chipClass = 'filled'; chipColor = 'background:rgba(16,185,129,0.2); color:#34d399;'; }
+        else if (q.status === 'incorrect') { chipClass = 'ambiguous'; chipColor = 'background:rgba(239,68,68,0.2); color:#f87171;'; }
+        else if (q.status === 'multiple_marked') { chipClass = 'ambiguous'; chipColor = 'background:rgba(245,158,11,0.2); color:#fbbf24;'; }
+        else { chipColor = 'background:rgba(156,163,175,0.2); color:#9ca3af;'; }
+        
+        tr.innerHTML = `
+          <td style="color:var(--text-muted)">Q${q.question_number}</td>
+          <td style="font-weight:700;">${markedText}</td>
+          <td style="color:var(--text-secondary);">${correctText}</td>
+          <td><span class="state-chip ${chipClass}" style="font-size:10px;">${q.status}</span></td>
+          <td>
+            <select class="modal-override" data-qnum="${q.question_number}" style="padding:2px 4px; font-size:10px; border-radius:4px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); cursor:pointer;">
+              <option value="default">--</option>
+              <option value="correct" ${q.status === 'correct' ? 'disabled' : ''}>\u2705 Correct</option>
+              <option value="incorrect" ${q.status === 'incorrect' ? 'disabled' : ''}>\u274c Wrong</option>
+              <option value="unanswered" ${q.status === 'unanswered' || q.status === 'empty' ? 'disabled' : ''}>\u2796 Unanswered</option>
+              <option value="multiple_marked" ${q.status === 'multiple_marked' ? 'disabled' : ''}>\u26a0\ufe0f Multiple</option>
+            </select>
+          </td>
+        `;
+        modalGradingBody.appendChild(tr);
+      });
+      
+      // Bind modal override selects
+      document.querySelectorAll('.modal-override').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          const qNum = parseInt(e.target.dataset.qnum);
+          const val = e.target.value;
+          if (val === 'default') return;
+          
+          const q = report.per_question.find(item => item.question_number === qNum);
+          if (q) {
+            q.status = val;
+            // Update the chip in the same row
+            const chip = e.target.closest('tr').querySelector('.state-chip');
+            chip.textContent = val;
+            chip.className = 'state-chip ' + (val === 'correct' ? 'filled' : val === 'incorrect' || val === 'multiple_marked' ? 'ambiguous' : 'empty');
+            // Reset select
+            e.target.value = 'default';
+            // Recalculate summary
+            openConfirmModal(); // re-render
+          }
+        });
+      });
+      
+      confirmModal.style.display = 'block';
+    }
+    
+    function closeConfirmModal() {
+      confirmModal.style.display = 'none';
+    }
+    
+    // Review button opens the modal
+    document.getElementById('reviewConfirmBtn').addEventListener('click', openConfirmModal);
+    document.getElementById('closeModalBtn').addEventListener('click', closeConfirmModal);
+    document.getElementById('modalCancelBtn').addEventListener('click', closeConfirmModal);
+    
+    // Confirm button: apply USN override, mark as confirmed, unlock submit
+    document.getElementById('modalConfirmBtn').addEventListener('click', () => {
+      const confirmedUsn = modalUsnInput.value.trim().toUpperCase();
+      if (!confirmedUsn) {
+        alert('Please enter a valid USN before confirming.');
+        return;
+      }
+      
+      // Apply the confirmed USN
+      document.getElementById('usnInput').value = confirmedUsn;
+      if (resultData) resultData.usn = confirmedUsn;
+      
+      // Recalculate scores after any overrides
+      updateScoreSummary();
+      renderResults(resultData);
+      
+      // Mark as confirmed
+      window._teacherConfirmed = true;
+      document.getElementById('confirmationBadge').style.display = 'block';
+      document.getElementById('submitDbBtn').style.display = '';
+      document.getElementById('submitDbBtn').disabled = false;
+      document.getElementById('reviewConfirmBtn').innerHTML = '\u2705 Reviewed \u2014 Click to Re-review';
+      
+      closeConfirmModal();
+    });
+
   </script>
 </body>
 </html>

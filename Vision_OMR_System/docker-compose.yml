@@ -42,6 +42,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend_ai/weights:/app/weights:ro
+      - ./backend_ai:/app
     environment:
       - PYTHONUNBUFFERED=1
     healthcheck:

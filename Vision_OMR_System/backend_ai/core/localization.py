@@ -100,7 +100,7 @@ def _get_model(weights_path: str | Path = _WEIGHTS_PATH) -> YOLO:
 
 def run_yolo_inference(
     image: np.ndarray,
-    conf_threshold: float = 0.35,
+    conf_threshold: float = 0.20,
     iou_threshold: float = 0.45,
     imgsz: int = 640,
     weights_path: str | Path = _WEIGHTS_PATH,

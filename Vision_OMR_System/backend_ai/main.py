@@ -28,12 +28,14 @@ from core.preprocess import preprocess_image
 from core.localization import run_yolo_inference
 from core.classification import classify_all, BubbleState
 from core import extract_usn_from_roi
+from core.pdf_parser import extract_pages_from_pdf
 
 from core.scoring import (
     score_sheet,
     SheetLayout,
     ScoreReport as _ScoreReport,
     AnswerStatus,
+    map_bubbles_to_grid,
 )
 
 # ── App ─────────────────────────────────────────────────────────────────────
@@ -70,6 +72,12 @@ class EvaluationResponse(BaseModel):
     needs_manual_review: bool
     bubbles: List[BubbleResult]
     processing_time_ms: int
+    score_report: Optional[dict] = None
+
+class BatchEvaluationResponse(BaseModel):
+    """Response array for a multi-page PDF batch."""
+    total_pages: int
+    results: List[dict]
 
 
 # ── Endpoints ───────────────────────────────────────────────────────────────
@@ -165,6 +173,110 @@ async def evaluate_sheet(file: UploadFile = File(...)):
             detail=f"Inference pipeline execution failure: {str(e)}",
         )
 
+# ── Batch Endpoint ──────────────────────────────────────────────────────────
+
+@app.post("/evaluate-batch", response_model=BatchEvaluationResponse)
+async def evaluate_batch(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form("default"),
+    questions_per_column: int = Form(15),
+    num_columns: int = Form(2),
+    options: str = Form("ABCD")
+):
+    """
+    Accepts either an image or a multi-page PDF.
+    Extracts pages and runs the pipeline on each sequentially.
+    """
+    if not file.content_type:
+        raise HTTPException(status_code=400, detail="Missing Content-Type")
+
+    try:
+        contents = await file.read()
+        images = []
+        
+        # 1. Parse File
+        if file.content_type == "application/pdf":
+            images = extract_pages_from_pdf(contents, dpi=200, max_pages=50)
+            if not images:
+                raise ValueError("Could not extract any pages from PDF.")
+        elif file.content_type.startswith("image/"):
+            img_arr = np.frombuffer(contents, np.uint8)
+            img = cv2.imdecode(img_arr, cv2.IMREAD_COLOR)
+            if img is None:
+                raise ValueError("Could not decode image.")
+            images = [img]
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file format. Use PDF or JPEG/PNG.")
+
+        # 2. Process Each Page
+        batch_results = []
+        answer_key = _answer_keys.get(session_id)
+        layout = SheetLayout(
+            questions_per_column=questions_per_column,
+            num_columns=num_columns,
+            options=options,
+        )
+
+        for i, img in enumerate(images):
+            t_start = time.perf_counter()
+            
+            # Recreate bytes for preprocess (since existing pipeline takes bytes)
+            # Actually, let's just encode it to bypass the bytes requirement, or refactor preprocess
+            _, buffer = cv2.imencode(".jpg", img)
+            clean_img = preprocess_image(buffer.tobytes())
+            
+            detections = run_yolo_inference(clean_img)
+            usn_dets = [d for d in detections if d.class_name == "usn"]
+            bubble_dets = [d for d in detections if d.class_name != "usn"]
+            
+            usn_value = None
+            if usn_dets:
+                d = usn_dets[0]
+                usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
+
+            classifications = classify_all(clean_img, bubble_dets)
+            
+            usn_y2 = usn_dets[0].y2 if usn_dets else None
+            score_report_dict = None
+            if answer_key:
+                report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
+                score_report_dict = {
+                    "total_questions": report.total_questions,
+                    "answered": report.answered,
+                    "correct": report.correct,
+                    "incorrect": report.incorrect,
+                    "unanswered": report.unanswered,
+                    "multiple_marked": report.multiple_marked,
+                    "ambiguous": report.ambiguous,
+                    "score_percent": report.score_percent,
+                    "per_question": [
+                        {
+                            "question_number": q.question_number,
+                            "marked_options": q.marked_options,
+                            "correct_option": q.correct_option,
+                            "status": q.status.value,
+                            "has_ambiguous": q.has_ambiguous,
+                        } for q in report.per_question
+                    ]
+                }
+                
+            t_end = time.perf_counter()
+            
+            batch_results.append({
+                "page_index": i + 1,
+                "usn": usn_value,
+                "score_report": score_report_dict,
+                "processing_time_ms": int((t_end - t_start) * 1000)
+            })
+
+        return BatchEvaluationResponse(
+            total_pages=len(batch_results),
+            results=batch_results
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+
 
 # ── Answer Key management ───────────────────────────────────────────────────
 
@@ -258,6 +370,7 @@ async def score_evaluated_sheet(
         contents = await file.read()
         clean_img = preprocess_image(contents)
         detections = run_yolo_inference(clean_img)
+        usn_dets = [d for d in detections if d.class_name == "usn"]
         bubble_detections = [d for d in detections if d.class_name != "usn"]
         classifications = classify_all(clean_img, bubble_detections)
 
@@ -267,7 +380,8 @@ async def score_evaluated_sheet(
             options=options,
         )
 
-        report = score_sheet(classifications, answer_key, layout)
+        usn_y2 = usn_dets[0].y2 if usn_dets else None
+        report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
 
         return ScoreResponse(
             total_questions=report.total_questions,
@@ -296,6 +410,76 @@ async def score_evaluated_sheet(
             detail=f"Scoring pipeline failure: {str(e)}",
         )
 
+class RescoreRequest(BaseModel):
+    """Request payload for manual re-scoring (overrides)."""
+    session_id: str = "default"
+    questions_per_column: int = 15
+    num_columns: int = 2
+    options: str = "ABCD"
+    bubbles: List[BubbleResult]
+
+
+@app.post("/re-score", response_model=ScoreResponse)
+async def rescore_sheet(req: RescoreRequest):
+    """
+    Fast-path scoring endpoint that bypasses inference.
+    Accepts the global bubble array from the frontend (with manual overrides applied)
+    and instantly recalculates the score.
+    """
+    answer_key = _answer_keys.get(req.session_id)
+    if not answer_key:
+        raise HTTPException(status_code=400, detail="Answer key not found for session.")
+
+    from core.localization import BubbleDetection
+    from core.classification import ClassificationResult, BubbleState
+
+    classifications = []
+    for b in req.bubbles:
+        det = BubbleDetection(
+            x1=b.bbox[0],
+            y1=b.bbox[1],
+            x2=b.bbox[2],
+            y2=b.bbox[3],
+            confidence=b.confidence,
+            class_id=b.class_id,
+            class_name=b.class_name
+        )
+        cr = ClassificationResult(
+            detection=det,
+            state=BubbleState(b.state),
+            fill_ratio=b.fill_ratio
+        )
+        classifications.append(cr)
+
+    layout = SheetLayout(
+        questions_per_column=req.questions_per_column,
+        num_columns=req.num_columns,
+        options=req.options,
+    )
+
+    report = score_sheet(classifications, answer_key, layout)
+
+    return ScoreResponse(
+        total_questions=report.total_questions,
+        answered=report.answered,
+        correct=report.correct,
+        incorrect=report.incorrect,
+        unanswered=report.unanswered,
+        multiple_marked=report.multiple_marked,
+        ambiguous=report.ambiguous,
+        score_percent=report.score_percent,
+        per_question=[
+            QuestionResultResponse(
+                question_number=q.question_number,
+                marked_options=q.marked_options,
+                correct_option=q.correct_option,
+                status=q.status.value,
+                has_ambiguous=q.has_ambiguous,
+            )
+            for q in report.per_question
+        ],
+    )
+
 
 # ── Debug / Visual Testing ──────────────────────────────────────────────────
 
@@ -310,42 +494,35 @@ _VIZ_COLORS = {
 
 def _annotate_image(
     image: np.ndarray,
-    detections,
-    classifications=None,
+    usn_detection = None,
+    valid_classifications = None,
 ) -> np.ndarray:
-    """Draw bounding boxes and labels on the image."""
+    """Draw bounding boxes and labels ONLY for valid USN and OMR bubble classifications."""
     annotated = image.copy()
-    cls_map = {}
-    if classifications:
-        for cr in classifications:
-            key = (int(cr.detection.x1), int(cr.detection.y1),
-                   int(cr.detection.x2), int(cr.detection.y2))
-            cls_map[key] = cr
 
-    for det in detections:
-        x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
-        key = (x1, y1, x2, y2)
-
-        # Determine color and label
-        if det.class_name == "usn":
-            color = _VIZ_COLORS["usn"]
-            label = f"USN {det.confidence:.0%}"
-        elif key in cls_map:
-            cr = cls_map[key]
-            color = _VIZ_COLORS.get(cr.state.value, (255, 255, 255))
-            label = f"{cr.state.value} {cr.fill_ratio:.0%}"
-        else:
-            color = _VIZ_COLORS.get(det.class_name, (255, 255, 255))
-            label = f"{det.class_name} {det.confidence:.0%}"
-
-        # Draw box
+    # Draw USN Box if detected
+    if usn_detection:
+        x1, y1, x2, y2 = int(usn_detection.x1), int(usn_detection.y1), int(usn_detection.x2), int(usn_detection.y2)
+        color = _VIZ_COLORS["usn"]
+        label = f"USN {usn_detection.confidence:.0%}"
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-
-        # Draw label background + text
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
         cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
         cv2.putText(annotated, label, (x1 + 2, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+
+    # Draw valid bubbles
+    if valid_classifications:
+        for cr in valid_classifications:
+            det = cr.detection
+            x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
+            color = _VIZ_COLORS.get(cr.state.value, (255, 255, 255))
+            label = f"{cr.state.value} {cr.fill_ratio:.0%}"
+            cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+            cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+            cv2.putText(annotated, label, (x1 + 2, y1 - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
     return annotated
 
@@ -370,6 +547,8 @@ class DebugResponse(BaseModel):
     needs_manual_review: bool
     processing_time_ms: int
     bubbles: List[BubbleResult]
+    usn: Optional[str] = None
+    score_report: Optional[dict] = None
 
 
 @app.post("/debug/evaluate")
@@ -412,6 +591,12 @@ async def debug_evaluate(
         # Classify
         classifications = classify_all(clean_img, bubble_dets)
 
+        layout = SheetLayout(
+            questions_per_column=questions_per_column,
+            num_columns=num_columns,
+            options=options,
+        )
+
         # ── Debug Save ──────────────────────────────────────────────────────
         debug_dir = Path(__file__).parent / "debug_output"
         debug_dir.mkdir(exist_ok=True)
@@ -442,8 +627,16 @@ async def debug_evaluate(
                     f.write(f"fill_ratio: {cr.fill_ratio:.4f}\n")
                     f.write(f"bbox: {x1}, {y1}, {x2}, {y2}\n")
 
-        # Annotate
-        annotated = _annotate_image(clean_img, detections, classifications)
+        # Annotate ONLY valid detections
+        usn_y2 = usn_dets[0].y2 if usn_dets else None
+        grid = map_bubbles_to_grid(classifications, layout, usn_y2)
+        valid_classifications = []
+        for q_num, opts in grid.items():
+            for opt_letter, cr in opts.items():
+                valid_classifications.append(cr)
+                
+        usn_det = usn_dets[0] if usn_dets else None
+        annotated = _annotate_image(clean_img, usn_det, valid_classifications)
 
         # Counts
         filled = sum(1 for c in classifications if c.state == BubbleState.FILLED)
@@ -469,12 +662,8 @@ async def debug_evaluate(
         score_report_dict = None
         answer_key = _answer_keys.get(session_id) if session_id else None
         if answer_key:
-            layout = SheetLayout(
-                questions_per_column=questions_per_column,
-                num_columns=num_columns,
-                options=options,
-            )
-            report = score_sheet(classifications, answer_key, layout)
+            usn_y2 = usn_dets[0].y2 if usn_dets else None
+            report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
             score_report_dict = {
                 "total_questions": report.total_questions,
                 "answered": report.answered,

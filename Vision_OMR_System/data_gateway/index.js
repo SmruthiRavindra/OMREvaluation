@@ -37,7 +37,8 @@ import {
   submitStudentResult,
   getSessionResults,
   downloadReport,
-  submitAbsentees
+  submitAbsentees,
+  getSession
 } from './controllers/reportController.js';
 
 // ── App setup ──────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ app.get('/api/history',   getHistory);
 
 // Session & Reports
 app.post('/api/sessions', createSession);
+app.get('/api/sessions/:sessionId', getSession);
 app.post('/api/results', submitStudentResult);
 app.post('/api/sessions/:sessionId/absentees', submitAbsentees);
 app.get('/api/sessions/:sessionId/results', getSessionResults);

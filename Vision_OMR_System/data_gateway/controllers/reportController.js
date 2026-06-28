@@ -362,3 +362,18 @@ async function generatePDF(res, session, results, stats) {
 
   doc.end();
 }
+
+export async function getSession(req, res) {
+  const { sessionId } = req.params;
+  try {
+    const sessionRes = await query(`SELECT * FROM exam_sessions WHERE id = $1`, [sessionId]);
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    return res.status(200).json(sessionRes.rows[0]);
+  } catch (err) {
+    console.error('[getSession] error:', err.message);
+    return res.status(500).json({ error: 'Failed to retrieve session' });
+  }
+}
+

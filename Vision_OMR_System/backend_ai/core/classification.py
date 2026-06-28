@@ -11,9 +11,7 @@ whether the bubble is:
   - "empty"    (no mark)
   - "ambiguous" (partial / smudged mark — triggers manual review flag)
 
-The classifier uses a simple OpenCV + threshold-based approach by default
-(no extra ML model needed).  If you have a dedicated Keras/ONNX
-micro-classifier, swap it in via `set_micro_model()`.
+The classifier uses a simple OpenCV + threshold-based approach by default.
 """
 
 from __future__ import annotations
@@ -69,26 +67,6 @@ class ClassificationResult:
 
 
 # ---------------------------------------------------------------------------
-# Thresholds (tunable)
-# ---------------------------------------------------------------------------
-
-# NOTE: OMR bubbles have a printed circle border that we dynamically locate
-# and exclude. We crop to the detected bubble's inner region and apply a
-# circular mask so only the interior is measured.
-#
-# If dark pixel ratio inside the masked inner ROI exceeds FILL_THRESHOLD → FILLED
-FILL_THRESHOLD: float = 0.30
-# Below EMPTY_THRESHOLD → EMPTY  |  between → AMBIGUOUS
-EMPTY_THRESHOLD: float = 0.15
-
-# Fixed grayscale threshold to separate dark ink/pencil (letters/marks) from
-# the white paper inside the bubble. Values below this are considered ink.
-FIXED_GRAY_THRESHOLD: int = 100
-
-
-
-
-# ---------------------------------------------------------------------------
 # Optional micro-model slot
 # ---------------------------------------------------------------------------
 
@@ -96,12 +74,7 @@ _micro_model = None  # Keras / ONNX model, if provided
 
 
 def set_micro_model(model) -> None:
-    """
-    Register an external micro-classifier (e.g., a Keras or ONNX model).
-
-    The model must accept a (1, 64, 64, 3) float32 array and return a
-    probability score in [0, 1] where 1 = filled.
-    """
+    """Register an external micro-classifier."""
     global _micro_model
     _micro_model = model
 
@@ -116,30 +89,99 @@ def classify_bubble(
     detection: BubbleDetection,
 ) -> ClassificationResult:
     """
-    Classify a single detected bubble as filled / empty / ambiguous.
-
-    Parameters
-    ----------
-    image     : Full BGR image (perspective-corrected)
-    detection : A BubbleDetection from localization.run_yolo_inference
-
-    Returns
-    -------
-    ClassificationResult
+    Classify a single detected bubble (fallback/individual call).
     """
     roi = _crop_roi(image, detection)
-
-    if _micro_model is not None:
-        return _classify_with_model(roi, detection)
-    return _classify_with_threshold(roi, detection)
+    gray, mask = _extract_inner_region(roi)
+    
+    mask_indices = mask > 0
+    mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
+    
+    # Static fallback thresholds if batch info is missing
+    filled_threshold = 100
+    empty_threshold = 135
+    
+    if mean_inner <= filled_threshold:
+        state = BubbleState.FILLED
+    elif mean_inner >= empty_threshold:
+        state = BubbleState.EMPTY
+    else:
+        state = BubbleState.AMBIGUOUS
+        
+    # Otsu fill ratio
+    mask_pixels = np.count_nonzero(mask)
+    _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    otsu_masked = cv2.bitwise_and(otsu_bin, mask)
+    fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+    
+    return ClassificationResult(detection, state, fill_ratio)
 
 
 def classify_all(
     image: np.ndarray,
     detections: List[BubbleDetection],
 ) -> List[ClassificationResult]:
-    """Batch-classify all detected bubbles."""
-    return [classify_bubble(image, det) for det in detections]
+    """
+    Batch-classify all detected bubbles using dynamic thresholding based on the 
+    overall sheet background paper intensity. This is highly robust to lighting 
+    gradients, low-resolution cameras, and heavy shadows.
+    """
+    if not detections:
+        return []
+
+    # First pass: crop and calculate inner mask mean/std/Otsu for each bubble
+    bubble_details = []
+    means = []
+    
+    for det in detections:
+        roi = _crop_roi(image, det)
+        gray, mask = _extract_inner_region(roi)
+        
+        mask_indices = mask > 0
+        mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
+        std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
+        
+        # Otsu fill ratio for fallback/meta compatibility
+        mask_pixels = np.count_nonzero(mask)
+        _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        otsu_masked = cv2.bitwise_and(otsu_bin, mask)
+        fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+        
+        means.append(mean_inner)
+        bubble_details.append((det, gray, mask, mean_inner, std_inner, fill_ratio))
+        
+    # Find the paper reference intensity using the 95th percentile of all bubbles.
+    # At least 75% of bubbles on a sheet are always unfilled (empty paper background).
+    # Using the 95th percentile guarantees finding a true paper white baseline even under shadows.
+    paper_ref = float(np.percentile(means, 95))
+    
+    # Define relative thresholds from the paper white baseline
+    filled_threshold = paper_ref - 40.0
+    empty_threshold = paper_ref - 20.0
+    
+    results = []
+    for det, gray, mask, mean_inner, std_inner, fill_ratio in bubble_details:
+        if mean_inner <= filled_threshold:
+            # Filled bubbles must be solid/uniform (low std deviation). 
+            # High standard deviation indicates a mixture of pen and paper (partial fill/ambiguous).
+            if std_inner < 18.0:
+                state = BubbleState.FILLED
+            else:
+                state = BubbleState.AMBIGUOUS
+        elif mean_inner >= empty_threshold:
+            state = BubbleState.EMPTY
+        else:
+            # Ambiguous zone: verify with YOLO model's confidence
+            if det.class_name == "unfilled" and det.confidence > 0.75:
+                state = BubbleState.EMPTY
+            elif det.class_name == "filled" and det.confidence > 0.80:
+                state = BubbleState.FILLED
+            else:
+                state = BubbleState.AMBIGUOUS
+                
+        results.append(ClassificationResult(det, state, fill_ratio))
+        
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -147,11 +189,9 @@ def classify_all(
 # ---------------------------------------------------------------------------
 
 
-def _crop_roi(image: np.ndarray, det: BubbleDetection, pad_factor: float = 0.25) -> np.ndarray:
+def _crop_roi(image: np.ndarray, det: BubbleDetection, pad_factor: float = 0.15) -> np.ndarray:
     """
     Crop and resize the bubble region to 64×64 for classification.
-    Applies padding on all sides to ensure the printed border of the bubble
-    is fully enclosed in the crop and does not touch the edges.
     """
     h, w = image.shape[:2]
     
@@ -174,28 +214,15 @@ def _crop_roi(image: np.ndarray, det: BubbleDetection, pad_factor: float = 0.25)
     return cv2.resize(roi, (64, 64))
 
 
-def _extract_inner_region(roi: np.ndarray, shrink: float = 0.35) -> tuple:
+def _extract_inner_region(roi: np.ndarray, shrink: float = 0.40) -> tuple:
     """
-    Extract the inner circular region of a bubble, excluding the
-    printed border ring. Uses contour-based dynamic centering and sizing
-    to ensure the border is perfectly ignored even if the crop is shifted or resized.
-
-    Parameters
-    ----------
-    roi     : 64×64 BGR image of the bubble
-    shrink  : fraction to shrink inward from the detected bubble radius
-              (0.35 = keep the central 65% radius circle).
-
-    Returns
-    -------
-    (gray, mask) where gray is the grayscale image
-    and mask is the circular binary mask (255 = inside, 0 = outside).
+    Extract the inner circular region of a bubble, excluding the printed border ring.
     """
     size = roi.shape[0]  # 64
     center = size // 2
 
     gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
+    
     # Otsu binarization (inverted: dark ink/border → white) to locate bubble structures
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
 
@@ -206,12 +233,11 @@ def _extract_inner_region(roi: np.ndarray, shrink: float = 0.35) -> tuple:
     cx, cy = float(center), float(center)
     r = float(center * 0.7)  # e.g., 22.4 pixels for a 64x64 ROI
 
-    # Find the contour that represents the bubble border (closest to the center and of reasonable size)
+    # Find the contour representing the bubble border (closest to center and of reasonable size)
     best_contour = None
     min_dist = float('inf')
     for c in contours:
         (ccx, ccy), cr = cv2.minEnclosingCircle(c)
-        # OMR bubbles in a 64x64 crop typically have a radius between 12 and 30 pixels
         if 12 <= cr <= 30:
             dist = np.sqrt((ccx - center) ** 2 + (ccy - center) ** 2)
             if dist < min_dist:
@@ -221,71 +247,9 @@ def _extract_inner_region(roi: np.ndarray, shrink: float = 0.35) -> tuple:
     if best_contour is not None:
         (cx, cy), r = cv2.minEnclosingCircle(best_contour)
 
-    # Create circular mask centered exactly on the detected bubble, shrunk to exclude the border
+    # Create circular mask centered exactly on the detected bubble
     mask = np.zeros((size, size), dtype=np.uint8)
     inner_radius = max(5, int(r * (1.0 - shrink)))
     cv2.circle(mask, (int(cx), int(cy)), inner_radius, 255, -1)
 
     return gray, mask
-
-
-def _classify_with_threshold(
-    roi: np.ndarray, detection: BubbleDetection
-) -> ClassificationResult:
-    """
-    Threshold-based classifier with inner-region masking.
-
-    Strategy:
-      1. Extract the inner circular region (excludes printed border)
-      2. Apply a robust fixed threshold of 135 to classify dark ink/marks
-      3. Compute fill ratio = dark pixels / total pixels inside mask
-      4. Compare against tuned thresholds
-    """
-    gray, mask = _extract_inner_region(roi)
-
-    # Fixed thresholding (inverted: dark ink/pencil → white)
-    _, binary = cv2.threshold(gray, FIXED_GRAY_THRESHOLD, 255, cv2.THRESH_BINARY_INV)
-
-    # Only count pixels inside the circular mask
-    masked_binary = cv2.bitwise_and(binary, mask)
-    mask_pixel_count = np.count_nonzero(mask)
-
-    if mask_pixel_count == 0:
-        return ClassificationResult(detection, BubbleState.EMPTY, 0.0)
-
-    fill_ratio = float(np.count_nonzero(masked_binary)) / mask_pixel_count
-
-    if fill_ratio >= FILL_THRESHOLD:
-        state = BubbleState.FILLED
-    elif fill_ratio <= EMPTY_THRESHOLD:
-        # Hybrid check: if YOLO model is highly confident it is filled, trust YOLO to catch lighter marks
-        if detection.class_name == "filled" and detection.confidence > 0.55:
-            state = BubbleState.FILLED
-        else:
-            state = BubbleState.EMPTY
-    else:
-        # Hybrid check: if YOLO model is highly confident it is unfilled, trust YOLO to ignore pre-printed letter outlines
-        if detection.class_name == "unfilled" and detection.confidence > 0.65:
-            state = BubbleState.EMPTY
-        else:
-            state = BubbleState.AMBIGUOUS
-
-    return ClassificationResult(detection, state, fill_ratio)
-
-
-def _classify_with_model(
-    roi: np.ndarray, detection: BubbleDetection
-) -> ClassificationResult:
-    """Run inference through the registered micro-model."""
-    tensor = roi.astype(np.float32) / 255.0
-    tensor = np.expand_dims(tensor, axis=0)  # (1, 64, 64, 3)
-    score = float(_micro_model.predict(tensor)[0][0])
-
-    if score >= FILL_THRESHOLD:
-        state = BubbleState.FILLED
-    elif score <= EMPTY_THRESHOLD:
-        state = BubbleState.EMPTY
-    else:
-        state = BubbleState.AMBIGUOUS
-
-    return ClassificationResult(detection, state, score)

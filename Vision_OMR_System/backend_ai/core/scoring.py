@@ -105,22 +105,24 @@ class ScoreReport:
 def map_bubbles_to_grid(
     classifications: List[ClassificationResult],
     layout: SheetLayout = DEFAULT_LAYOUT,
+    usn_y2: Optional[float] = None,
 ) -> Dict[int, Dict[str, ClassificationResult]]:
     """
     Assign each classified bubble to a (question, option) cell.
 
     Strategy:
-      1. Sort all bubble detections by their centre-x to separate column
-         blocks (if multiple columns).
-      2. Within each column block, sort by centre-y to determine question
-         row ordering.
-      3. Within each question row, sort by centre-x to assign option
-         letters (A, B, C, D …).
-
-    Returns a nested dict:  { question_number: { "A": result, "B": result, … } }
+      1. Filter out bubbles above the USN box (e.g. noise in header).
+      2. Split into column blocks by x-coordinate.
+      3. Within each column block, sort by y and group into rows.
+      4. Discard outlier rows (e.g. desk surface detections) by checking gaps.
+      5. Within each question row, sort by x to assign options.
     """
     if not classifications:
         return {}
+
+    # 1. Filter out bubbles above the USN box (like noise in header Date: field)
+    if usn_y2 is not None:
+        classifications = [c for c in classifications if c.detection.y1 > usn_y2 + 20]
 
     # Compute centre coordinates for each classification
     items = []
@@ -162,8 +164,32 @@ def map_bubbles_to_grid(
                     continue
             rows.append([item])
 
+        if not rows:
+            continue
+
+        # 4. Filter out outlier rows (desk surface detections) by checking gaps
+        row_blocks = []
+        current_block = [rows[0]]
+        
+        for i in range(1, len(rows)):
+            prev_row_y = sum(t[1] for t in rows[i-1]) / len(rows[i-1])
+            curr_row_y = sum(t[1] for t in rows[i]) / len(rows[i])
+            if curr_row_y - prev_row_y <= 85.0:  # Spacing is ~45-50px. >85px represents a desk split.
+                current_block.append(rows[i])
+            else:
+                row_blocks.append(current_block)
+                current_block = [rows[i]]
+        row_blocks.append(current_block)
+        
+        # Keep the largest block (the OMR bubble grid)
+        best_block = max(row_blocks, key=len)
+        
+        # Trim to layout max expected rows in case of extra bottom rows
+        if len(best_block) > layout.questions_per_column:
+            best_block = best_block[:layout.questions_per_column]
+
         # Map each clustered row to a question number
-        for row_idx, row_items in enumerate(rows):
+        for row_idx, row_items in enumerate(best_block):
             # Sort within row by x (left to right) → option order
             row_items.sort(key=lambda t: t[0])
 
@@ -187,25 +213,12 @@ def score_sheet(
     classifications: List[ClassificationResult],
     answer_key: Optional[Dict[int, str]] = None,
     layout: SheetLayout = DEFAULT_LAYOUT,
+    usn_y2: Optional[float] = None,
 ) -> ScoreReport:
     """
     Grade a complete OMR sheet.
-
-    Parameters
-    ----------
-    classifications : list of ClassificationResult
-        Output from `classify_all()`.
-    answer_key : dict, optional
-        Mapping of question_number → correct option letter, e.g. {1: "A", 2: "C"}.
-        If None, scoring reports marked options without correctness judgement.
-    layout : SheetLayout
-        Physical layout descriptor.
-
-    Returns
-    -------
-    ScoreReport
     """
-    grid = map_bubbles_to_grid(classifications, layout)
+    grid = map_bubbles_to_grid(classifications, layout, usn_y2)
 
     per_question: List[QuestionResult] = []
     correct = incorrect = unanswered = multiple_marked = ambiguous = 0
