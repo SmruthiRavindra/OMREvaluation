@@ -1,3 +1,3 @@
-state: ambiguous
-fill_ratio: 0.8059
-bbox: 642, 972, 671, 997
+state: filled
+fill_ratio: 1.0000
+bbox: 224, 521, 251, 546

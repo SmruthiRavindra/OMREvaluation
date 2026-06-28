@@ -154,3 +154,50 @@ export async function getHistory(req, res) {
     return res.status(500).json({ error: 'Failed to fetch history.' });
   }
 }
+
+export async function evaluateBatchV1(req, res) {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: 'No files uploaded. Use field name "files".' });
+  }
+
+  try {
+    const form = new FormData();
+    for (const file of req.files) {
+      form.append('files', file.buffer, {
+        filename: file.originalname || 'sheet.jpg',
+        contentType: file.mimetype,
+      });
+    }
+
+    form.append('session_id', req.body.session_id || 'default');
+    form.append('questions_per_column', req.body.questions_per_column || '15');
+    form.append('num_columns', req.body.num_columns || '2');
+    form.append('options', req.body.options || 'ABCD');
+
+    const { data } = await axios.post(`${FASTAPI_URL}/api/v1/batch-evaluate`, form, {
+      headers: form.getHeaders(),
+      timeout: 10_000,
+      maxBodyLength: Infinity,
+    });
+
+    return res.status(202).json(data);
+  } catch (err) {
+    const detail =
+      err.response?.data?.detail || err.message || 'FastAPI proxy error';
+    console.error('[evaluateBatchV1] error:', detail);
+    return res.status(502).json({ error: detail });
+  }
+}
+
+export async function getTaskStatusV1(req, res) {
+  const { taskId } = req.params;
+  try {
+    const { data } = await axios.get(`${FASTAPI_URL}/api/v1/tasks/${taskId}`);
+    return res.json(data);
+  } catch (err) {
+    const detail =
+      err.response?.data?.detail || err.message || 'FastAPI proxy error';
+    console.error('[getTaskStatusV1] error:', detail);
+    return res.status(err.response?.status || 502).json({ error: detail });
+  }
+}

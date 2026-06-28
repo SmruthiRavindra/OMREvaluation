@@ -10,3 +10,4 @@ numpy==2.0.2
 python-multipart==0.0.9
 pymupdf==1.25.5
 easyocr==1.7.2
+pytesseract==0.3.13

@@ -377,3 +377,31 @@ export async function getSession(req, res) {
   }
 }
 
+export async function getPendingCount(req, res) {
+  const { sessionId } = req.params;
+  try {
+    const sessionRes = await query(`SELECT * FROM exam_sessions WHERE id = $1`, [sessionId]);
+    if (sessionRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const session = sessionRes.rows[0];
+    const resultsCountRes = await query(
+      `SELECT COUNT(*) as count FROM student_results WHERE session_id = $1`,
+      [sessionId]
+    );
+    const submittedCount = parseInt(resultsCountRes.rows[0].count, 10);
+    const expected = parseInt(session.expected_students, 10) || 0;
+    const pending = Math.max(0, expected - submittedCount);
+    
+    return res.json({
+      session_id: sessionId,
+      expected_students: expected,
+      submitted_students: submittedCount,
+      pending_students: pending
+    });
+  } catch (err) {
+    console.error('[getPendingCount] error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch pending count' });
+  }
+}
+

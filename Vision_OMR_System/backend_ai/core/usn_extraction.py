@@ -147,16 +147,14 @@ def correct_usn_format(text: str) -> str:
 
 def extract_usn_from_roi(image: np.ndarray, x1: float, y1: float, x2: float, y2: float) -> str:
     """
-    Crop the USN bounding box, preprocess it, and run OCR to extract the student USN.
+    Crop the USN bounding box, run multi-candidate Tesseract OCR consensus with fast-path, and return USN.
     """
     h, w = image.shape[:2]
     
-    # Slice only the first 42% of the bounding box width.
-    # The USN (Date field) always sits on the far left of the row.
+    # Crop the Date + USN area (left 42% of header row box)
     box_w = x2 - x1
     x2_cropped = x1 + (box_w * 0.42)
     
-    # Add padding to ensure no edge clipping
     pad = 8
     rx1 = max(0, int(x1) - pad)
     ry1 = max(0, int(y1) - pad)
@@ -166,89 +164,82 @@ def extract_usn_from_roi(image: np.ndarray, x1: float, y1: float, x2: float, y2:
     roi = image[ry1:ry2, rx1:rx2]
     if roi.size == 0:
         return "UNKNOWN"
-    
-    # Preprocessing options:
-    # 1. Resized BGR for modern CNN-based EasyOCR detection
-    roi_large = cv2.resize(roi, (0, 0), fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-    
-    # 2. Convert to grayscale & enhanced CLAHE as fallbacks
-    gray = cv2.cvtColor(roi_large, cv2.COLOR_BGR2GRAY)
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-    enhanced_gray = clahe.apply(gray)
-    
-    # 3. Thresholded image
-    blurred = cv2.GaussianBlur(enhanced_gray, (3, 3), 0)
-    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    
-    try:
-        reader = _get_reader()
         
-        candidates = []
+    debug_dir = Path(__file__).parent.parent / "debug_output"
+    debug_dir.mkdir(exist_ok=True)
+    cv2.imwrite(str(debug_dir / "usn_crop_test.png"), roi)
         
-        # Test on raw BGR, resized BGR, enhanced gray and thresholded images
-        for img_input in [roi, roi_large, enhanced_gray, thresh]:
-            results = reader.readtext(img_input, allowlist="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    candidates = []
+    
+    import pytesseract
+    
+    # Ordered search space: most likely configs first
+    search_space = [
+        # (scale, variant_name, psm)
+        (2.0, "otsu", 6),
+        (3.0, "otsu", 6),
+        (2.0, "equalized", 6),
+        (3.0, "equalized", 6),
+        (2.0, "otsu_inv", 6),
+        (3.0, "otsu_inv", 6),
+        (2.0, "large_gray", 6),
+        (3.0, "large_gray", 6),
+        # Fallbacks with PSM 3/4
+        (2.0, "otsu", 3),
+        (3.0, "otsu", 3),
+        (2.0, "otsu", 4),
+        (3.0, "otsu", 4),
+    ]
+    
+    # Pre-cache scaled images to avoid redundant scaling
+    scaled_images = {}
+    for scale in [2.0, 3.0]:
+        scaled_images[scale] = cv2.resize(gray, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        
+    for scale, var_name, psm in search_space:
+        large = scaled_images[scale]
+        
+        # Apply preprocessing
+        if var_name == "large_gray":
+            img_var = large
+        elif var_name == "equalized":
+            img_var = cv2.equalizeHist(large)
+        elif var_name == "otsu":
+            _, img_var = cv2.threshold(large, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        elif var_name == "otsu_inv":
+            _, img_var = cv2.threshold(large, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        else:
+            continue
             
-            if not results:
+        try:
+            custom_config = f'--psm {psm} --oem 3'
+            raw_text = pytesseract.image_to_string(img_var, config=custom_config).strip()
+            if not raw_text:
                 continue
-            
-            boxes = []
-            for bbox, text, conf in results:
-                text = text.strip()
-                if len(text) < 2:
-                    continue
-                if text.upper() == 'USN':
-                    continue
-                y_coords = [p[1] for p in bbox]
-                height = max(y_coords) - min(y_coords)
-                boxes.append((height, bbox, text, conf))
                 
-            if not boxes:
-                continue
-                
-            boxes.sort(key=lambda x: x[0], reverse=True)
-            max_height = boxes[0][0]
-            
-            # Filter out tiny print/instructions
-            usn_boxes = [b for b in boxes if b[0] >= max_height * 0.40]
-            usn_boxes.sort(key=lambda x: min([p[0] for p in x[1]]))
-            
-            extracted_pieces = [b[2] for b in usn_boxes]
-            
-            if extracted_pieces:
-                raw_text = "".join(extracted_pieces)
-                raw_text = raw_text.replace('USN', '').replace('usn', '')
-                
-                corrected = correct_usn_format(raw_text)
-                
-                # Dynamic fallback for highly distorted images
-                if corrected == "UNKNOWN" and len(raw_text) >= 8:
-                    clean_fallback = re.sub(r'[^A-Za-z0-9]', '', raw_text).upper()
-                    if len(clean_fallback) > 3:
-                        if clean_fallback[0] in ('Y', 'H', 'A', 'U', '6', 'V'):
-                            clean_fallback = '4' + clean_fallback[1:]
-                        if clean_fallback[1] in ('1', 'W', 'U'):
-                            clean_fallback = clean_fallback[0] + 'VV' + clean_fallback[2:]
-                    corrected = clean_fallback
+            corrected = correct_usn_format(raw_text)
+            if corrected != "UNKNOWN":
+                # Fast path check: perfect VTU USN (e.g. 4VV23CS005)
+                if corrected.startswith("4VV") and len(corrected) == 10:
+                    print(f"[USN Tesseract Fast-Path] Found perfect match '{corrected}' using scale={scale}, {var_name}, psm={psm}")
+                    return corrected
                     
-                if corrected != "UNKNOWN":
-                    avg_conf = sum(b[3] for b in usn_boxes) / len(usn_boxes)
-                    candidates.append((corrected, avg_conf, raw_text))
-        
-        if candidates:
-            # Sort by:
-            # 1. Matches expected OMR USN prefix (4VV)
-            # 2. Diff to target length (10 chars), then confidence
-            candidates.sort(key=lambda x: (
-                0 if x[0].startswith("4VV") else 1,
-                abs(len(x[0]) - 10) if len(x[0]) < 10 else abs(len(x[0]) - 10.5),
-                -x[1]
-            ))
-            best = candidates[0]
-            print(f"[USN Extraction] Raw: '{best[2]}' -> Corrected: '{best[0]}' (conf: {best[1]:.2f})")
-            return best[0]
+                candidates.append((corrected, raw_text, var_name, psm, scale))
+        except Exception as e:
+            print(f"[USN Tesseract Fast-Path Error] scale={scale}, {var_name}, psm={psm}: {e}")
             
-    except Exception as e:
-        print(f"[USN Extraction] Error running OCR: {e}")
+    # Rank candidates:
+    # 1. Matches expected OMR USN prefix (starts with "4VV")
+    # 2. Closest to correct length (10 characters)
+    if candidates:
+        candidates.sort(key=lambda x: (
+            0 if x[0].startswith("4VV") else 1,
+            abs(len(x[0]) - 10)
+        ))
+        best = candidates[0]
+        print(f"[USN Tesseract Multi-Candidate Fallback] Best: '{best[0]}' from Raw: '{best[1]}' (method: {best[2]}, psm: {best[3]}, scale: {best[4]})")
+        return best[0]
         
+    print("[USN Tesseract Fast-Path] No valid USN found among candidates")
     return "UNKNOWN"

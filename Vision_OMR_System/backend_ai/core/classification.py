@@ -97,24 +97,26 @@ def classify_bubble(
     mask_indices = mask > 0
     mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
     
-    # Static fallback thresholds if batch info is missing
-    filled_threshold = 100
-    empty_threshold = 135
+    # Calculate local paper reference using the outer margin of the 64x64 ROI
+    cx, cy = 32.0, 32.0
+    h_idx, w_idx = np.indices((64, 64))
+    dist_from_center = np.sqrt((h_idx - cy) ** 2 + (w_idx - cx) ** 2)
+    outer_mask = dist_from_center > 26.0
+    local_paper = float(np.percentile(gray[outer_mask], 90)) if np.any(outer_mask) else 255.0
     
-    if mean_inner <= filled_threshold:
+    contrast_diff = local_paper - mean_inner
+    
+    is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
+    is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
+    
+    if is_filled:
         state = BubbleState.FILLED
-    elif mean_inner >= empty_threshold:
+    elif is_empty:
         state = BubbleState.EMPTY
     else:
         state = BubbleState.AMBIGUOUS
         
-    # Otsu fill ratio
-    mask_pixels = np.count_nonzero(mask)
-    _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    otsu_masked = cv2.bitwise_and(otsu_bin, mask)
-    fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
-    
-    return ClassificationResult(detection, state, fill_ratio)
+    return ClassificationResult(detection, state, 0.0)
 
 
 def classify_all(
@@ -122,16 +124,13 @@ def classify_all(
     detections: List[BubbleDetection],
 ) -> List[ClassificationResult]:
     """
-    Batch-classify all detected bubbles using dynamic thresholding based on the 
-    overall sheet background paper intensity. This is highly robust to lighting 
-    gradients, low-resolution cameras, and heavy shadows.
+    Batch-classify all detected bubbles using local paper reference thresholding.
+    This is extremely robust to lighting gradients, shadows, and low resolution.
     """
     if not detections:
         return []
 
-    # First pass: crop and calculate inner mask mean/std/Otsu for each bubble
-    bubble_details = []
-    means = []
+    results = []
     
     for det in detections:
         roi = _crop_roi(image, det)
@@ -141,34 +140,24 @@ def classify_all(
         mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
         std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
         
-        # Otsu fill ratio for fallback/meta compatibility
-        mask_pixels = np.count_nonzero(mask)
-        _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        otsu_masked = cv2.bitwise_and(otsu_bin, mask)
-        fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+        # Calculate local paper reference using corners of 64x64 ROI
+        cx, cy = 32.0, 32.0
+        h_idx, w_idx = np.indices((64, 64))
+        dist_from_center = np.sqrt((h_idx - cy) ** 2 + (w_idx - cx) ** 2)
+        outer_mask = dist_from_center > 26.0
+        local_paper = float(np.percentile(gray[outer_mask], 90)) if np.any(outer_mask) else 255.0
         
-        means.append(mean_inner)
-        bubble_details.append((det, gray, mask, mean_inner, std_inner, fill_ratio))
+        contrast_diff = local_paper - mean_inner
         
-    # Find the paper reference intensity using the 95th percentile of all bubbles.
-    # At least 75% of bubbles on a sheet are always unfilled (empty paper background).
-    # Using the 95th percentile guarantees finding a true paper white baseline even under shadows.
-    paper_ref = float(np.percentile(means, 95))
-    
-    # Define relative thresholds from the paper white baseline
-    filled_threshold = paper_ref - 40.0
-    empty_threshold = paper_ref - 20.0
-    
-    results = []
-    for det, gray, mask, mean_inner, std_inner, fill_ratio in bubble_details:
-        if mean_inner <= filled_threshold:
-            # Filled bubbles must be solid/uniform (low std deviation). 
-            # High standard deviation indicates a mixture of pen and paper (partial fill/ambiguous).
-            if std_inner < 18.0:
+        is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
+        is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
+        
+        if is_filled:
+            if std_inner < 28.0:
                 state = BubbleState.FILLED
             else:
                 state = BubbleState.AMBIGUOUS
-        elif mean_inner >= empty_threshold:
+        elif is_empty:
             state = BubbleState.EMPTY
         else:
             # Ambiguous zone: verify with YOLO model's confidence
@@ -179,6 +168,12 @@ def classify_all(
             else:
                 state = BubbleState.AMBIGUOUS
                 
+        # Otsu fill ratio for fallback/meta compatibility if needed
+        mask_pixels = np.count_nonzero(mask)
+        _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        otsu_masked = cv2.bitwise_and(otsu_bin, mask)
+        fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+        
         results.append(ClassificationResult(det, state, fill_ratio))
         
     return results
@@ -253,3 +248,8 @@ def _extract_inner_region(roi: np.ndarray, shrink: float = 0.40) -> tuple:
     cv2.circle(mask, (int(cx), int(cy)), inner_radius, 255, -1)
 
     return gray, mask
+
+
+def _classify_with_threshold(roi: np.ndarray, detection: BubbleDetection) -> ClassificationResult:
+    """Compatibility wrapper for testing."""
+    return classify_bubble(roi, detection)

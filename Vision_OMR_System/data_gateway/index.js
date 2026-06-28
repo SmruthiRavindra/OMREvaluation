@@ -30,6 +30,8 @@ import {
   evaluateSheet,
   submitResults,
   getHistory,
+  evaluateBatchV1,
+  getTaskStatusV1,
 } from './controllers/evaluationController.js';
 
 import {
@@ -38,7 +40,8 @@ import {
   getSessionResults,
   downloadReport,
   submitAbsentees,
-  getSession
+  getSession,
+  getPendingCount
 } from './controllers/reportController.js';
 
 // ── App setup ──────────────────────────────────────────────────────────────
@@ -74,9 +77,14 @@ app.post('/api/evaluate', upload.single('file'), evaluateSheet);
 app.post('/api/submit',   submitResults);
 app.get('/api/history',   getHistory);
 
+// Async Batch Ingestion Routes (V1)
+app.post('/api/v1/evaluate', upload.array('files'), evaluateBatchV1);
+app.get('/api/v1/tasks/:taskId', getTaskStatusV1);
+
 // Session & Reports
 app.post('/api/sessions', createSession);
 app.get('/api/sessions/:sessionId', getSession);
+app.get('/api/sessions/:sessionId/pending-count', getPendingCount);
 app.post('/api/results', submitStudentResult);
 app.post('/api/sessions/:sessionId/absentees', submitAbsentees);
 app.get('/api/sessions/:sessionId/results', getSessionResults);

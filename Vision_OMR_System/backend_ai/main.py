@@ -14,12 +14,15 @@ Pipeline:
 import time
 import base64
 import io
+import uuid
+import asyncio
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -276,6 +279,198 @@ async def evaluate_batch(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Batch processing failed: {str(e)}")
+
+
+# ── Async Batch Ingestion & Polling ─────────────────────────────────────────
+
+_tasks: Dict[str, dict] = {}
+_tasks_lock = threading.Lock()
+
+
+class BatchEvaluationStartResponse(BaseModel):
+    task_id: str
+    total_files: int
+    status: str
+
+
+def run_batch_evaluation_sync(
+    task_id: str,
+    files_data: List[tuple],
+    session_id: str,
+    questions_per_column: int,
+    num_columns: int,
+    options: str
+):
+    try:
+        answer_key = _answer_keys.get(session_id)
+        layout = SheetLayout(
+            questions_per_column=questions_per_column,
+            num_columns=num_columns,
+            options=options
+        )
+        
+        # 1. Expand all input files (including PDF pages) into a list of single sheets
+        all_sheets = []
+        for filename, content in files_data:
+            if filename.lower().endswith(".pdf"):
+                images = extract_pages_from_pdf(content, dpi=200, max_pages=50)
+                for p_idx, img in enumerate(images):
+                    _, buffer = cv2.imencode(".jpg", img)
+                    all_sheets.append((f"{filename}_page_{p_idx+1}.jpg", buffer.tobytes()))
+            else:
+                all_sheets.append((filename, content))
+                
+        if not all_sheets:
+            with _tasks_lock:
+                _tasks[task_id]["status"] = "completed"
+                _tasks[task_id]["progress"] = "0/0"
+                _tasks[task_id]["progress_pct"] = 100
+            return
+
+        with _tasks_lock:
+            _tasks[task_id]["total"] = len(all_sheets)
+            _tasks[task_id]["progress"] = f"0/{len(all_sheets)}"
+
+        for idx, (filename, content) in enumerate(all_sheets):
+            t_start = time.perf_counter()
+            
+            clean_img = preprocess_image(content)
+            detections = run_yolo_inference(clean_img)
+            usn_dets = [d for d in detections if d.class_name == "usn"]
+            bubble_dets = [d for d in detections if d.class_name != "usn"]
+            
+            usn_value = None
+            if usn_dets:
+                d = usn_dets[0]
+                usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
+                
+            classifications = classify_all(clean_img, bubble_dets)
+            
+            usn_y2 = usn_dets[0].y2 if usn_dets else None
+            score_report_dict = None
+            if answer_key:
+                report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
+                score_report_dict = {
+                    "total_questions": report.total_questions,
+                    "answered": report.answered,
+                    "correct": report.correct,
+                    "incorrect": report.incorrect,
+                    "unanswered": report.unanswered,
+                    "multiple_marked": report.multiple_marked,
+                    "ambiguous": report.ambiguous,
+                    "score_percent": report.score_percent,
+                    "per_question": [
+                        {
+                            "question_number": q.question_number,
+                            "marked_options": q.marked_options,
+                            "correct_option": q.correct_option,
+                            "status": q.status.value,
+                            "has_ambiguous": q.has_ambiguous,
+                        } for q in report.per_question
+                    ]
+                }
+                
+            filled_cnt = sum(1 for c in classifications if c.state == BubbleState.FILLED)
+            empty_cnt = sum(1 for c in classifications if c.state == BubbleState.EMPTY)
+            ambig_cnt = sum(1 for c in classifications if c.state == BubbleState.AMBIGUOUS)
+            
+            t_end = time.perf_counter()
+            result = {
+                "filename": filename,
+                "usn": usn_value,
+                "filled_count": filled_cnt,
+                "empty_count": empty_cnt,
+                "ambiguous_count": ambig_cnt,
+                "needs_manual_review": ambig_cnt > 0,
+                "total_detections": len(classifications),
+                "score_report": score_report_dict,
+                "processing_time_ms": int((t_end - t_start) * 1000)
+            }
+            
+            with _tasks_lock:
+                _tasks[task_id]["results"].append(result)
+                _tasks[task_id]["done"] += 1
+                progress_pct = int((_tasks[task_id]["done"] / len(all_sheets)) * 100)
+                _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
+                _tasks[task_id]["progress_pct"] = progress_pct
+                _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
+                
+    except Exception as e:
+        with _tasks_lock:
+            _tasks[task_id]["status"] = "failed"
+            _tasks[task_id]["error"] = str(e)
+
+
+async def run_batch_evaluation_async(
+    task_id: str,
+    files_data: List[tuple],
+    session_id: str,
+    questions_per_column: int,
+    num_columns: int,
+    options: str
+):
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None,
+        run_batch_evaluation_sync,
+        task_id,
+        files_data,
+        session_id,
+        questions_per_column,
+        num_columns,
+        options
+    )
+
+
+@app.post("/api/v1/batch-evaluate", response_model=BatchEvaluationStartResponse, status_code=202)
+async def batch_evaluate_async(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    session_id: str = Form("default"),
+    questions_per_column: int = Form(15),
+    num_columns: int = Form(2),
+    options: str = Form("ABCD")
+):
+    files_data = []
+    for file in files:
+        content = await file.read()
+        files_data.append((file.filename, content))
+        
+    task_id = str(uuid.uuid4())
+    with _tasks_lock:
+        _tasks[task_id] = {
+            "status": "queued",
+            "progress": f"0/{len(files_data)}",
+            "progress_pct": 0,
+            "done": 0,
+            "total": len(files_data),
+            "results": []
+        }
+        
+    background_tasks.add_task(
+        run_batch_evaluation_async,
+        task_id,
+        files_data,
+        session_id,
+        questions_per_column,
+        num_columns,
+        options
+    )
+    
+    return BatchEvaluationStartResponse(
+        task_id=task_id,
+        total_files=len(files_data),
+        status="queued"
+    )
+
+
+@app.get("/api/v1/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    with _tasks_lock:
+        task = _tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 # ── Answer Key management ───────────────────────────────────────────────────

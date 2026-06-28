@@ -9,11 +9,13 @@ FROM ultralytics/ultralytics:latest-cpu
 LABEL maintainer="Vision OMR System"
 LABEL description="FastAPI backend for OMR sheet evaluation"
 
-# Runtime system deps for OpenCV headless
+# Runtime system deps for OpenCV headless and Tesseract OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
         libxcb1 \
+        tesseract-ocr \
+        tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

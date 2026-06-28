@@ -418,6 +418,14 @@
 
     <!-- ── Left Panel: Upload + Controls ─────────────── -->
     <div class="left-panel">
+      <!-- Pending Submissions Banner -->
+      <div id="pendingBanner" style="display: none; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px 16px; border-radius: var(--radius); margin-bottom: 20px; font-size: 13px; color: var(--amber); align-items: center; justify-content: space-between; transition: all 0.3s ease;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span>⚠</span>
+          <span><strong><span id="pendingCountText">0</span></strong> student report(s) pending to be saved.</span>
+        </div>
+        <span style="font-size: 11px; background: rgba(245, 158, 11, 0.2); padding: 2px 8px; border-radius: 20px; font-weight: 700;">PENDING</span>
+      </div>
 
       <!-- Step 1: Session Setup Card -->
       <div class="card" style="margin-bottom: 20px;" id="step1Card">
@@ -482,7 +490,7 @@
               <div class="upload-icon">📄</div>
               <div class="upload-title">Drop your OMR sheet here</div>
               <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 50 pages</div>
-              <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf">
+              <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf" multiple>
               <div class="file-preview" id="filePreview" style="display:none;">
                 <img id="previewImg" alt="Preview" style="display:none;">
                 <div id="pdfPreview" style="display:none; color: var(--accent); padding: 40px 0; font-size: 14px; text-align: center; font-weight: bold;">
@@ -495,6 +503,18 @@
               <button class="btn btn-primary" id="evaluateBtn" disabled>
                 🔍 Run Evaluation Pipeline
               </button>
+            </div>
+
+            <!-- Batch Progress Bar Section -->
+            <div id="batchProgressSection" style="display: none; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px;">
+                <span id="batchProgressStatus" style="color: var(--text-secondary); font-weight: 600;">Ingesting files...</span>
+                <span id="batchProgressPct" style="color: var(--accent); font-weight: 700;">0%</span>
+              </div>
+              <div style="width: 100%; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; position: relative;">
+                <div id="batchProgressBar" style="width: 0%; height: 100%; background: linear-gradient(135deg, var(--accent), #8b5cf6); transition: width 0.3s ease;"></div>
+              </div>
+              <div id="batchProgressDetail" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Processed 0/0 sheets</div>
             </div>
             
             <!-- Page Count Validation Alert -->
@@ -713,7 +733,10 @@
 
   <script>
     // ── State ─────────────────────────────────────────────
+    const GATEWAY_URL = 'http://localhost:3000';
     let selectedFile = null;
+    let selectedFiles = [];
+    let pendingCount = 0;
     let resultData = null;
 
     // ── Elements ──────────────────────────────────────────
@@ -767,47 +790,68 @@
     uploadZone.addEventListener('drop', e => {
       e.preventDefault();
       uploadZone.classList.remove('drag-over');
-      if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
     });
     fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) handleFile(fileInput.files[0]);
+      if (fileInput.files.length) handleFiles(fileInput.files);
     });
 
-    function handleFile(file) {
-      if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
-        showError('Please upload an image file (JPEG/PNG) or a PDF.');
-        return;
+    function handleFiles(files) {
+      if (!files.length) return;
+      
+      const fileList = Array.from(files);
+      // Validate all files
+      for (const file of fileList) {
+        if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+          showError('Please upload image files (JPEG/PNG) or a PDF.');
+          return;
+        }
+        if (file.size > 50 * 1024 * 1024) {
+          showError('File too large. Maximum size is 50 MB.');
+          return;
+        }
       }
-      if (file.size > 50 * 1024 * 1024) {
-        showError('File too large. Maximum size is 50 MB.');
-        return;
-      }
-      selectedFile = file;
+
+      selectedFiles = fileList;
+      selectedFile = fileList[0]; // for backward compatibility where single operations expect it
+      
       uploadZone.classList.add('has-file');
       evaluateBtn.disabled = false;
       clearBtn.style.display = 'block';
 
       // Hide default icons
       document.querySelector('.upload-icon').style.display = 'none';
-      document.querySelector('.upload-title').textContent = file.name;
-      document.querySelector('.upload-hint').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type}`;
-      
       filePreview.style.display = 'block';
       const pImg = document.getElementById('previewImg');
       const pPdf = document.getElementById('pdfPreview');
 
-      if (file.type === 'application/pdf') {
+      if (selectedFiles.length === 1) {
+        const file = selectedFiles[0];
+        document.querySelector('.upload-title').textContent = file.name;
+        document.querySelector('.upload-hint').textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB · ${file.type}`;
+        
+        if (file.type === 'application/pdf') {
+          pImg.style.display = 'none';
+          pPdf.style.display = 'block';
+          pPdf.textContent = '📑 PDF Selected (Pages will be extracted)';
+        } else {
+          pPdf.style.display = 'none';
+          pImg.style.display = 'block';
+          const reader = new FileReader();
+          reader.onload = e => {
+            pImg.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      } else {
+        // Multiple files
+        document.querySelector('.upload-title').textContent = `${selectedFiles.length} files selected`;
+        const totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+        document.querySelector('.upload-hint').textContent = `${(totalSize / 1024 / 1024).toFixed(2)} MB total`;
+        
         pImg.style.display = 'none';
         pPdf.style.display = 'block';
-      } else {
-        // Show preview
-        pPdf.style.display = 'none';
-        pImg.style.display = 'block';
-        const reader = new FileReader();
-        reader.onload = e => {
-          pImg.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
+        pPdf.textContent = `📑 ${selectedFiles.length} OMR sheets selected for batch evaluation`;
       }
       hideError();
     }
@@ -899,8 +943,37 @@
     });
 
     // ── Evaluate ──────────────────────────────────────────
+    // Pending Submissions state management helpers
+    async function fetchPendingCount() {
+      const sessionId = sessionIdInput.value.trim() || 'default';
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/pending-count`);
+        if (resp.ok) {
+          const data = await resp.json();
+          pendingCount = data.pending_students;
+          drawPendingBanner();
+        }
+      } catch (err) {
+        console.error("Error fetching pending count:", err);
+      }
+    }
+
+    function drawPendingBanner() {
+      const banner = document.getElementById('pendingBanner');
+      const text = document.getElementById('pendingCountText');
+      if (pendingCount > 0) {
+        text.textContent = pendingCount;
+        banner.style.display = 'flex';
+      } else {
+        banner.style.display = 'none';
+      }
+    }
+
+    // ── Evaluate ──────────────────────────────────────────
     evaluateBtn.addEventListener('click', async () => {
-      if (!selectedFile) return;
+      if (!selectedFiles.length) return;
+
+      const isBatch = selectedFiles.length > 1 || selectedFiles[0].type === 'application/pdf';
 
       evaluateBtn.disabled = true;
       evaluateBtn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;margin:0 8px 0 0;"></div> Processing…';
@@ -914,58 +987,133 @@
       imageDisplay.appendChild(overlay);
 
       try {
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        formData.append('session_id', sessionIdInput.value.trim() || 'default');
-        formData.append('questions_per_column', '15');
-        formData.append('num_columns', '2');
-        formData.append('options', 'ABCD');
-
-        if (selectedFile.type === 'application/pdf') {
-          // Use batch endpoint for PDFs
-          const resp = await fetch('/evaluate-batch', { method: 'POST', body: formData });
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `HTTP ${resp.status}`);
-          }
-          const batchData = await resp.json();
-          // For now, if it's a batch PDF, just show an alert that batch processing is complete.
-          // Let's grab the first page's result data just to populate the single-page view for now.
-          if (batchData.results && batchData.results.length > 0) {
-             window.batchResults = batchData.results;
-             resultData = batchData.results[0]; // For UI compatibility in this simple version
-             renderResults(resultData);
-             
-             // Page Count Validation
-             const expectedCount = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
-             const absentees = document.getElementById('absentUsnsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
-             const targetCount = expectedCount - absentees.length;
-             
-             const pageCountAlert = document.getElementById('pageCountAlert');
-             if (batchData.total_pages !== targetCount) {
-               document.getElementById('pageCountAlertMsg').textContent = `Expected ${targetCount} sheets (${expectedCount} students - ${absentees.length} absent), but processed ${batchData.total_pages} pages!`;
-               pageCountAlert.style.display = 'block';
-               alert(`Warning: Page count mismatch! Expected ${targetCount} but got ${batchData.total_pages}.`);
-             } else {
-               pageCountAlert.style.display = 'none';
-               alert(`Batch processing complete! Processed ${batchData.total_pages} pages perfectly matching expected count. Click "Submit to Database" to save all students.`);
-             }
-          } else {
-             throw new Error("No pages extracted from PDF.");
-          }
-        } else {
+        if (!isBatch) {
           // Standard single image flow
+          const formData = new FormData();
+          formData.append('file', selectedFiles[0]);
+          formData.append('session_id', sessionIdInput.value.trim() || 'default');
+          formData.append('questions_per_column', '15');
+          formData.append('num_columns', '2');
+          formData.append('options', 'ABCD');
+
           const resp = await fetch('/debug/evaluate', { method: 'POST', body: formData });
           if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `HTTP ${resp.status}`);
           }
           resultData = await resp.json();
+          window.batchResults = null; // Reset batch
           renderResults(resultData);
+          
+          // Increment local pending count and draw banner
+          pendingCount++;
+          drawPendingBanner();
+
+          // Cleanup loading state
+          evaluateBtn.disabled = false;
+          evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
+          overlay.remove();
+        } else {
+          // Async Batch / PDF flow
+          document.getElementById('batchProgressSection').style.display = 'block';
+          const statusText = document.getElementById('batchProgressStatus');
+          const progressPct = document.getElementById('batchProgressPct');
+          const progressBar = document.getElementById('batchProgressBar');
+          const progressDetail = document.getElementById('batchProgressDetail');
+
+          statusText.textContent = 'Uploading files...';
+          progressPct.textContent = '0%';
+          progressBar.style.width = '0%';
+          progressDetail.textContent = `Uploading ${selectedFiles.length} file(s) to system`;
+
+          const formData = new FormData();
+          for (const f of selectedFiles) {
+            formData.append('files', f);
+          }
+          formData.append('session_id', sessionIdInput.value.trim() || 'default');
+          formData.append('questions_per_column', '15');
+          formData.append('num_columns', '2');
+          formData.append('options', 'ABCD');
+
+          const uploadResp = await fetch(`${GATEWAY_URL}/api/v1/evaluate`, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!uploadResp.ok) {
+            const err = await uploadResp.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${uploadResp.status}`);
+          }
+
+          const initData = await uploadResp.json();
+          const taskId = initData.task_id;
+          statusText.textContent = 'Queued in background...';
+          progressDetail.textContent = `Task ID: ${taskId}`;
+
+          // Start polling
+          const pollInterval = setInterval(async () => {
+            try {
+              const pollResp = await fetch(`${GATEWAY_URL}/api/v1/tasks/${taskId}`);
+              if (!pollResp.ok) return;
+
+              const task = await pollResp.json();
+              if (task.status === 'processing' || task.status === 'queued') {
+                statusText.textContent = 'Processing sheets...';
+                progressPct.textContent = `${task.progress_pct}%`;
+                progressBar.style.width = `${task.progress_pct}%`;
+                progressDetail.textContent = `Completed ${task.progress} sheets`;
+              } else if (task.status === 'completed') {
+                clearInterval(pollInterval);
+                statusText.textContent = 'Completed!';
+                progressPct.textContent = '100%';
+                progressBar.style.width = '100%';
+                progressDetail.textContent = `Successfully processed all ${task.total} sheets`;
+
+                evaluateBtn.disabled = false;
+                evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
+                overlay.remove();
+
+                if (task.results && task.results.length > 0) {
+                  window.batchResults = task.results;
+                  resultData = task.results[0]; // populate first sheet in visual preview
+                  renderResults(resultData);
+
+                  // Page Count Validation
+                  const expectedCount = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
+                  const absentees = document.getElementById('absentUsnsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+                  const targetCount = expectedCount - absentees.length;
+                  
+                  const pageCountAlert = document.getElementById('pageCountAlert');
+                  if (task.results.length !== targetCount) {
+                    document.getElementById('pageCountAlertMsg').textContent = `Expected ${targetCount} sheets (${expectedCount} students - ${absentees.length} absent), but processed ${task.results.length} pages!`;
+                    pageCountAlert.style.display = 'block';
+                    alert(`Warning: Page count mismatch! Expected ${targetCount} but got ${task.results.length}.`);
+                  } else {
+                    pageCountAlert.style.display = 'none';
+                    alert(`Batch processing complete! Processed ${task.results.length} pages perfectly matching expected count. Click "Submit to Database" to save all students.`);
+                  }
+                  
+                  // Update pending count
+                  await fetchPendingCount();
+                } else {
+                  showError('Batch completed but no results were returned.');
+                }
+              } else if (task.status === 'failed') {
+                clearInterval(pollInterval);
+                throw new Error(task.error || 'Background task failed');
+              }
+            } catch (pollErr) {
+              clearInterval(pollInterval);
+              showError(`Polling error: ${pollErr.message}`);
+              evaluateBtn.disabled = false;
+              evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
+              overlay.remove();
+            }
+          }, 1500);
+
         }
       } catch (err) {
         showError(`Pipeline error: ${err.message}`);
-      } finally {
         evaluateBtn.disabled = false;
         evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
         overlay.remove();
@@ -1239,7 +1387,6 @@
     }
 
     // ── Data Gateway & Reports ────────────────────────────
-    const GATEWAY_URL = 'http://localhost:3000';
     
     document.getElementById('submitDbBtn').addEventListener('click', async () => {
       let itemsToSubmit = [];
@@ -1325,6 +1472,9 @@
         
         statusEl.textContent = `✅ Saved ${successCount}/${itemsToSubmit.length} results to database!`;
         statusEl.style.color = 'var(--green)';
+        
+        // Re-fetch pending count from database gateway
+        await fetchPendingCount();
       } catch (err) {
         statusEl.textContent = `❌ Error: Could not connect to Data Gateway on port 3000.`;
         statusEl.style.color = 'var(--red)';
@@ -1382,6 +1532,9 @@
         
         statusEl.textContent = `✅ Session initialized. ${usns.length} absentees saved!`;
         statusEl.style.color = 'var(--green)';
+        
+        // Re-fetch pending count from database gateway
+        await fetchPendingCount();
         
         // Unlock Step 2
         document.getElementById('workflowStepsContainer').style.opacity = '1';
@@ -1561,6 +1714,9 @@
       
       closeConfirmModal();
     });
+
+    // Initial check on load
+    fetchPendingCount();
 
   </script>
 </body>
