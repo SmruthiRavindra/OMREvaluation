@@ -162,4 +162,9 @@ def _perspective_warp(
     )
     M = cv2.getPerspectiveTransform(corners, dst)
     warped = cv2.warpPerspective(img, M, (w, h))
+    
+    # Discard warp if it results in a low-contrast flat/solid color (e.g. warping desk mat/background noise)
+    gray_warped = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    if gray_warped.std() < 18.0:
+        return img
     return warped

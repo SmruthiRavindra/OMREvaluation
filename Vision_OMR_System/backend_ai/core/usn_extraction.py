@@ -12,6 +12,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+import pytesseract
 
 # Lazy import easyocr to save startup time
 _reader = None
@@ -46,6 +47,12 @@ def resolve_branch(branch_cand: str) -> str:
     branch_cand = branch_cand.upper()
     if branch_cand in ("U", "H"):
         return "LI"
+    if branch_cand == "A":
+        return "CV"
+    if branch_cand == "I":
+        return "IS"
+    if branch_cand == "E":
+        return "EC"
         
     if branch_cand in VALID_BRANCHES:
         return branch_cand
@@ -75,14 +82,30 @@ def correct_usn_format(text: str) -> str:
     Format: <RegionDigit><College2Letters><Year2Digits><Branch2Letters><Roll3or4Digits>
     e.g. 4VV23CS205, 4VV23LI108
     """
-    # Remove whitespace and punctuation, uppercase
-    text = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+    # Remove whitespace and punctuation, uppercase. Keep unicode cent/yen symbols which map to digits/V.
+    text = re.sub(r'[^A-Za-z0-9\(\[\{\u00a2\u00a5]', '', text).upper()
     if not text:
         return "UNKNOWN"
         
-    # Map W -> VV (very common EasyOCR mistake)
-    text = text.replace('W', 'VV')
+    # Strip printed header noise prefixes
+    text = re.sub(r'^(DATE|PATE|OATE|LITA|UM|TIME|MAX)+', '', text)
     
+    # Common OCR replacements
+    text = text.replace('W', 'VV')
+    text = text.replace('(', '4')
+    text = text.replace('[', '4')
+    text = text.replace('{', '4')
+    text = text.replace('\u00a2', '3')
+    text = text.replace('\u00a5', 'V')
+    
+    # Pre-standardize common 4VV misreads (e.g. GVV -> 4VV, LUV -> 4VV, IUU -> 4VV)
+    text = re.sub(r'^[GLIT1]([VUW]{2})', r'4\1', text)
+    text = re.sub(r'^4[VUW]{2}', '4VV', text)
+    
+    # Prepend 4 if it starts with college (VUWGLTY) followed by year
+    if re.match(r'^[VUWGLTY]{2}[0-9OIZSQ79BZEGS]', text):
+        text = '4' + text
+        
     # If the text starts with VV or V followed by two digits (year), prepend 4
     if text.startswith('VV') and len(text) > 3 and text[2].isdigit():
         text = '4' + text
@@ -90,55 +113,61 @@ def correct_usn_format(text: str) -> str:
         text = '4V' + text
     
     # Locate a potential USN inside the string. 
-    # Region: digit or typical misread letter (1-9, I, L, T, Y, A, H, G)
-    # College: 2 letters/digits (V, W, U, 1, L)
-    # Year: 2 digits or misread letters (0-9, O, I, Z, S)
+    # Region: digit or typical misread letter
+    # College: 2 letters/digits (V, W, U, 1, L, C, G)
+    # Year: 2 alphanumeric chars (allows Year OCR to fail gracefully and resolve via fallback)
     # Branch: 1 or 2 letters/digits (A-Z, 0-9)
-    # Roll: 3 or 4 digits or misread letters (0-9, O, I, Z, S, B, G)
-    
-    pattern = r'([1-9IYLTAHG6V][V1LWC][V1LWC][0-9OIZS]{2}[A-Z0-9]{1,2}[0-9OIZSBLG]{3,4})'
+    # Roll: 3 or 4 digits or misread letters (0-9, O, I, Z, S, B, G, L, T)
+    pattern = r'([1-9IYLTAHG6V4CDUO][V1LWCUYGC]{2}[A-Z0-9]{2}[A-Z0-9]{1,2}[0-9OIZSBLG]{3,4})'
     match = re.search(pattern, text)
     
     if match:
         raw_usn = match.group(1)
         
-        # Region is always 4 for VV
+        def letter_to_digit(char: str) -> str:
+            m = {
+                'O': '0', 'I': '1', 'Z': '2', 'S': '5', 'B': '8', 'G': '6', 'L': '1', 'T': '1', 'Q': '2',
+                'E': '3', 'A': '4', 'H': '4', 'Y': '4', 'X': '4', 'C': '3', 'U': '0', 'D': '0', 'F': '7', 'P': '9'
+            }
+            return m.get(char, char)
+            
+        def digit_to_letter(char: str) -> str:
+            m = {
+                '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G', '4': 'A', '7': 'F', '9': 'P'
+            }
+            return m.get(char, char)
+            
         region = '4'
-        college = "VV" # Force to VV since it's the only college for this OMR sheet setup
+        college = 'VV'
+        year = "".join(letter_to_digit(c) for c in raw_usn[3:5])
         
-        # 3. Fix Year
-        def fix_digits(s):
-            return s.replace('O', '0').replace('I', '1').replace('Z', '2').replace('S', '5').replace('B', '8').replace('G', '6').replace('L', '1').replace('T', '1')
-        
-        year = fix_digits(raw_usn[3:5])
-        
-        # Year correction for 3/8 confusion (e.g. 28 -> 23, 48 -> 23)
-        if year in ('28', '2B', '48', '18', 'Z8', 'S8', '88'):
-            year = '23'
-        
-        # Dynamically split branch and roll based on length
+        # Dynamically split branch and roll based on characters
         branch_roll_part = raw_usn[5:]
-        n = len(branch_roll_part)
         
-        if n >= 5:
-            # e.g. "CS205" (5), "C1108" (5), "CI1008" (6)
-            branch_cand = branch_roll_part[:2]
+        first_char = branch_roll_part[0]
+        second_char = branch_roll_part[1] if len(branch_roll_part) > 1 else ""
+        digit_chars = "0123456789OQZ" # Limit to clear digits/non-branch letters
+        
+        # C1 is a valid branch containing a digit
+        if first_char == 'C' and second_char in ('1', 'I', 'L', 'T'):
+            branch_cand = first_char + second_char
             roll_cand = branch_roll_part[2:]
-        else:
-            # n <= 4, e.g. "U608" (4), "U108" (4)
-            branch_cand = branch_roll_part[:1]
+        elif second_char in digit_chars:
+            branch_cand = first_char
             roll_cand = branch_roll_part[1:]
+        else:
+            branch_cand = first_char + second_char
+            roll_cand = branch_roll_part[2:]
             
         branch = resolve_branch(branch_cand)
-        roll = fix_digits(roll_cand)
+        roll = "".join(letter_to_digit(c) for c in roll_cand)
         
         return region + college + year + branch + roll
         
     # If no pattern matches, fallback to generic cleanup if it looks like a short USN
     if 8 <= len(text) <= 12:
-        # Simple digits fix
         def fix_digits(s):
-            return s.replace('O', '0').replace('I', '1').replace('Z', '2').replace('S', '5')
+            return s.replace('O', '0').replace('I', '1').replace('Z', '2').replace('S', '5').replace('Q', '2')
         text = fix_digits(text)
         return text
         
@@ -169,10 +198,12 @@ def extract_usn_from_roi(image: np.ndarray, x1: float, y1: float, x2: float, y2:
     debug_dir.mkdir(exist_ok=True)
     cv2.imwrite(str(debug_dir / "usn_crop_test.png"), roi)
         
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    if len(roi.shape) == 3 and roi.shape[2] == 3:
+        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = roi.copy()
+        
     candidates = []
-    
-    import pytesseract
     
     # Ordered search space: most likely configs first
     search_space = [

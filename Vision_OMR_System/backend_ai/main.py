@@ -694,15 +694,19 @@ def _annotate_image(
 ) -> np.ndarray:
     """Draw bounding boxes and labels ONLY for valid USN and OMR bubble classifications."""
     annotated = image.copy()
+    h_img, w_img = annotated.shape[:2]
 
     # Draw USN Box if detected
     if usn_detection:
         x1, y1, x2, y2 = int(usn_detection.x1), int(usn_detection.y1), int(usn_detection.x2), int(usn_detection.y2)
+        x1, y1 = max(0, min(w_img - 1, x1)), max(0, min(h_img - 1, y1))
+        x2, y2 = max(0, min(w_img - 1, x2)), max(0, min(h_img - 1, y2))
         color = _VIZ_COLORS["usn"]
         label = f"USN {usn_detection.confidence:.0%}"
         cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-        cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+        ly1 = max(0, y1 - th - 6)
+        cv2.rectangle(annotated, (x1, ly1), (min(w_img - 1, x1 + tw + 4), y1), color, -1)
         cv2.putText(annotated, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
@@ -711,11 +715,14 @@ def _annotate_image(
         for cr in valid_classifications:
             det = cr.detection
             x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
+            x1, y1 = max(0, min(w_img - 1, x1)), max(0, min(h_img - 1, y1))
+            x2, y2 = max(0, min(w_img - 1, x2)), max(0, min(h_img - 1, y2))
             color = _VIZ_COLORS.get(cr.state.value, (255, 255, 255))
             label = f"{cr.state.value} {cr.fill_ratio:.0%}"
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-            cv2.rectangle(annotated, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
+            ly1 = max(0, y1 - th - 6)
+            cv2.rectangle(annotated, (x1, ly1), (min(w_img - 1, x1 + tw + 4), y1), color, -1)
             cv2.putText(annotated, label, (x1 + 2, y1 - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
 
