@@ -138,13 +138,12 @@ def map_bubbles_to_grid(
     if layout.num_columns == 1:
         col_blocks = [items]
     else:
-        # Divide by spatial coordinate intervals across 800px width
-        col_width = 800.0 / layout.num_columns
+        # Divide into N roughly equal groups by x-position
+        block_size = len(items) // layout.num_columns
         for i in range(layout.num_columns):
-            x_min = i * col_width
-            x_max = (i + 1) * col_width
-            block = [item for item in items if x_min <= item[0] < x_max]
-            col_blocks.append(block)
+            start = i * block_size
+            end = start + block_size if i < layout.num_columns - 1 else len(items)
+            col_blocks.append(items[start:end])
 
     # ── Within each column, sort by y → split into question rows ────────
     grid: Dict[int, Dict[str, ClassificationResult]] = {}
@@ -172,23 +171,10 @@ def map_bubbles_to_grid(
         row_blocks = []
         current_block = [rows[0]]
         
-        gaps = []
         for i in range(1, len(rows)):
             prev_row_y = sum(t[1] for t in rows[i-1]) / len(rows[i-1])
             curr_row_y = sum(t[1] for t in rows[i]) / len(rows[i])
-            gaps.append(curr_row_y - prev_row_y)
-            
-        if gaps:
-            import numpy as np
-            median_gap = float(np.median(gaps))
-            threshold = max(85.0, median_gap * 1.8)
-        else:
-            threshold = 85.0
-            
-        for i in range(1, len(rows)):
-            prev_row_y = sum(t[1] for t in rows[i-1]) / len(rows[i-1])
-            curr_row_y = sum(t[1] for t in rows[i]) / len(rows[i])
-            if curr_row_y - prev_row_y <= threshold:
+            if curr_row_y - prev_row_y <= 85.0:  # Spacing is ~45-50px. >85px represents a desk split.
                 current_block.append(rows[i])
             else:
                 row_blocks.append(current_block)

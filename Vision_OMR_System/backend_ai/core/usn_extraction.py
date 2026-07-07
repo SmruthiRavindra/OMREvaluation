@@ -1,419 +1,399 @@
 """
 usn_extraction.py
 =================
-Extracts and corrects handwritten USN (Student ID) from OMR sheets using EasyOCR.
+Robust handwritten USN (University Seat Number) recognition engine.
+
+Uses EasyOCR with strict A-Z / 0-9 character whitelisting to read
+alphanumeric handwriting that defeats dictionary-based OCR models.
+
+The pipeline:
+  1. Crop the USN bounding-box region from the clean OMR image.
+  2. Preprocess the crop (grayscale → CLAHE → adaptive threshold).
+  3. Run EasyOCR with `allowlist` restricted to uppercase + digits.
+  4. Apply structural VTU USN correction on the raw OCR output.
+  5. Return the best candidate via multi-scale consensus ranking.
 """
 
 from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-import pytesseract
 
-# Lazy import easyocr to save startup time
+# ---------------------------------------------------------------------------
+# Lazy-loaded EasyOCR reader (one-time init, ~2-3 s on CPU)
+# ---------------------------------------------------------------------------
 _reader = None
 
-VALID_BRANCHES = ["CS", "IS", "EC", "EE", "ME", "CV", "AI", "AD", "CI", "C1", "LI"]
-
-DIGIT_TO_LETTER = {
-    '0': ['O', 'D', 'C'],
-    '1': ['I', 'L', 'T', 'J'],
-    '2': ['Z', 'C', 'L', 'E'],
-    '3': ['E', 'B', 'S'],
-    '4': ['A', 'H', 'Y', 'X', 'C'],
-    '5': ['S'],
-    '6': ['G', 'C'],
-    '7': ['T', 'L', 'F'],
-    '8': ['B', 'S', 'R'],
-    '9': ['G', 'P']
-}
+_ALPHANUMERIC_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
 
 def _get_reader():
+    """Lazily initialise the EasyOCR reader on first call."""
     global _reader
     if _reader is None:
         import easyocr
-        # Initialize reader (uses CPU by default as per pip list)
-        _reader = easyocr.Reader(['en'], gpu=False)
+
+        _reader = easyocr.Reader(
+            ["en"],
+            gpu=False,
+            verbose=False,
+        )
     return _reader
 
 
-def resolve_branch(branch_cand: str) -> str:
-    """Resolve a candidate branch string (potentially containing OCR errors/digits) to a valid branch."""
-    branch_cand = branch_cand.upper()
-    if branch_cand in ("U", "H"):
-        return "LI"
-    if branch_cand == "A":
-        return "CV"
-    if branch_cand == "I":
-        return "IS"
-    if branch_cand == "E":
-        return "EC"
-        
-    if branch_cand in VALID_BRANCHES:
-        return branch_cand
-        
-    # Mutation sets for common misread letters / digits in branch codes
-    LETTER_MUTATIONS = {
-        'L': ['I', 'L', 'T', 'J', '1'],
-        '1': ['I', 'L', 'T', 'J', '1'],
-        'I': ['I', 'L', 'T', 'J', '1'],
-        'U': ['L', 'I', 'U'],
-        'H': ['L', 'I', 'H'],
-        'C': ['C', 'G', 'O', '0'],
-        'S': ['S', '5', '8', 'B'],
-        'B': ['B', '8', 'S'],
-        'G': ['G', '6', 'C'],
-        'D': ['D', 'O', '0'],
-        'O': ['O', '0', 'D'],
-    }
-        
-    # Generate all candidate letter combinations
-    pos0_options = LETTER_MUTATIONS.get(branch_cand[0], [branch_cand[0]])
-    if branch_cand[0] in DIGIT_TO_LETTER:
-        pos0_options.extend(DIGIT_TO_LETTER[branch_cand[0]])
-        
-    pos1_options = LETTER_MUTATIONS.get(branch_cand[1], [branch_cand[1]]) if len(branch_cand) > 1 else [""]
-    if len(branch_cand) > 1 and branch_cand[1] in DIGIT_TO_LETTER:
-        pos1_options.extend(DIGIT_TO_LETTER[branch_cand[1]])
-        
-    for p0 in pos0_options:
-        for p1 in pos1_options:
-            comb = p0 + p1
-            if comb in VALID_BRANCHES:
-                return comb
-                
-    # Fallback to CS if no match (most common)
+# ---------------------------------------------------------------------------
+# VTU branch table
+# ---------------------------------------------------------------------------
+VALID_BRANCHES = frozenset([
+    "CS", "IS", "EC", "EE", "ME", "CV", "AI", "AD", "CI", "C1", "LI",
+    "AS", "BT", "CH", "AE", "ML", "CB", "CD", "CY", "IM", "TX",
+])
+
+# ---------------------------------------------------------------------------
+# Character confusion maps (handwriting OCR ↔ structural position)
+# ---------------------------------------------------------------------------
+_LETTER_TO_DIGIT = {
+    "O": "0", "D": "0", "U": "0",
+    "I": "1", "L": "1", "T": "1", "J": "1",
+    "Z": "2", "Q": "2",
+    "E": "3", "C": "3",
+    "A": "4", "H": "4", "Y": "4", "X": "4",
+    "S": "5",
+    "G": "6",
+    "F": "7",
+    "B": "8", "R": "8",
+    "P": "9",
+}
+
+_DIGIT_TO_LETTER = {
+    "0": "O",
+    "1": "I",
+    "2": "Z",
+    "3": "E",
+    "4": "A",
+    "5": "S",
+    "6": "G",
+    "7": "F",
+    "8": "B",
+    "9": "P",
+}
+
+
+def _char_to_digit(c: str) -> str:
+    """Convert a character to its digit equivalent if it's a letter."""
+    if c.isdigit():
+        return c
+    return _LETTER_TO_DIGIT.get(c, c)
+
+
+def _char_to_letter(c: str) -> str:
+    """Convert a character to its letter equivalent if it's a digit."""
+    if c.isalpha():
+        return c
+    return _DIGIT_TO_LETTER.get(c, c)
+
+
+# ---------------------------------------------------------------------------
+# Branch resolution
+# ---------------------------------------------------------------------------
+def resolve_branch(candidate: str) -> str:
+    """
+    Resolve a 1-or-2 character OCR candidate to a valid VTU branch code.
+    Tries all plausible character substitutions before falling back to CS.
+    """
+    candidate = candidate.upper()
+
+    # Direct match
+    if candidate in VALID_BRANCHES:
+        return candidate
+
+    # Single-character shortcuts
+    _SINGLE = {"I": "IS", "E": "EC", "A": "AI", "M": "ME"}
+    if len(candidate) == 1 and candidate in _SINGLE:
+        return _SINGLE[candidate]
+
+    # Try all substitution combinations for 2-char candidates
+    if len(candidate) >= 2:
+        c0, c1 = candidate[0], candidate[1]
+        opts0 = [c0] + ([_DIGIT_TO_LETTER[c0]] if c0 in _DIGIT_TO_LETTER else [])
+        opts1 = [c1] + ([_DIGIT_TO_LETTER[c1]] if c1 in _DIGIT_TO_LETTER else [])
+        for a in opts0:
+            for b in opts1:
+                combo = a + b
+                if combo in VALID_BRANCHES:
+                    return combo
+
     return "CS"
 
 
+# ---------------------------------------------------------------------------
+# Structural USN correction
+# ---------------------------------------------------------------------------
 def correct_usn_format(text: str) -> str:
     """
-    Clean up raw OCR text to a plausible VTU USN using branch-aligned positional templates.
-    Format: <RegionDigit><College2Letters><Year2Digits><Branch2Letters><Roll3or4Digits>
-    e.g. 4VV23CS229, 4VV23LI108
+    Clean raw OCR text → plausible VTU USN.
+
+    VTU format: <Region:1digit><College:2letters><Year:2digits><Branch:2letters><Roll:3-4digits>
+    Example:    4VV23CS001
+
+    The prefix 4VV is always forced (all sheets are from the same region/college).
+    Year, Branch and Roll are extracted dynamically from the OCR text.
     """
-    # Clean characters: keep only alphanumeric
-    text = re.sub(r'[^A-Za-z0-9]', '', text).upper()
+    # ── 1. Strip everything except A-Z, 0-9, and a few known OCR glyphs ──
+    text = re.sub(r"[^A-Za-z0-9()\[\]{}]", "", text).upper()
     if not text:
         return "UNKNOWN"
-        
-    # Standard substitutions for common OCR errors
-    text = text.replace('W', 'VV')
-    
-    # Locate all potential 8-11 character candidate substrings
-    candidates = []
-    for i in range(len(text) - 7):
-        sub = text[i:i+11]
-        if len(sub) < 10:
-            sub = text[i:i+10]
-        if len(sub) < 9:
-            sub = text[i:i+9]
-        if len(sub) < 8:
-            continue
-        candidates.append(sub)
-        
-    if not candidates:
+
+    # ── 2. Remove common printed header noise that Tesseract/EasyOCR picks up ──
+    text = re.sub(r"^(DATE|PATE|OATE|LITA|UM|TIME|MAX|REG|NO|USN)+", "", text)
+
+    # ── 3. Common single-glyph OCR substitutions ──
+    text = text.replace("W", "VV")
+    text = text.replace("(", "4").replace("[", "4").replace("{", "4")
+
+    # ── 4. Normalise the 4VV prefix ──
+    # GVV / LVV / 1VV / IVV / TVV → 4VV
+    text = re.sub(r"^[GLIT1][VUW]{2}", "4VV", text)
+    text = re.sub(r"^4[VUW]{2}", "4VV", text)
+
+    # If it starts with VV<digit>, prepend 4
+    if re.match(r"^VV\d", text):
+        text = "4" + text
+    # If it starts with V<digit> (missing second V), insert V
+    elif re.match(r"^V\d", text):
+        text = "4V" + text
+    # If it starts with two letter-like chars followed by digits, prepend 4
+    elif re.match(r"^[VUWGLTY]{2}\d", text):
+        text = "4" + text
+
+    # ── 5. Match the structural pattern ──
+    # Region(1) College(2) Year(2) BranchRoll(3-6)
+    pattern = (
+        r"([1-9IYLTAHG6V4CDUO]"       # Region: digit or misread letter
+        r"[V1LWCUYGC]{2}"              # College: 2 letters (V-like)
+        r"[A-Z0-9]{2}"                 # Year: 2 alphanumeric
+        r"[A-Z0-9]{1,2}"              # Branch: 1 or 2 chars
+        r"[0-9OIZSBLGT]{3,4})"        # Roll: 3-4 digit-like chars
+    )
+    match = re.search(pattern, text)
+
+    if not match:
+        # Fallback: if text is approximately USN length, return cleaned version
+        if 8 <= len(text) <= 12:
+            return text
         return "UNKNOWN"
-        
-    # Rank candidates by structural template similarity
-    LET_TO_DIG = {
-        'O': '0', 'I': '1', 'Z': '2', 'S': '5', 'B': '8', 'G': '6', 'L': '1', 'T': '1', 'Q': '2',
-        'E': '3', 'A': '4', 'H': '4', 'Y': '4', 'X': '4', 'C': '3', 'U': '0', 'D': '0', 'F': '7', 'P': '9',
-        'J': '1'
-    }
-    DIG_TO_LET = {
-        '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G', '4': 'A', '7': 'F', '9': 'P'
-    }
-    
-    def to_digit(c):
-        return LET_TO_DIG.get(c, c) if c.isalpha() else c
-        
-    def to_letter(c):
-        return DIG_TO_LET.get(c, c) if c.isdigit() else c
-        
-    best_usn = "UNKNOWN"
-    best_score = -1
-    
-    for cand in candidates:
-        # Template: <Region:1d><College:2L><Year:2d><Branch:2L><Roll:3-4d>
-        p0 = to_digit(cand[0])
-        if p0 not in ('1', '2', '3', '4', '5', '6', '7', '8', '9'):
-            p0 = '4'
-            
-        college = to_letter(cand[1]) + to_letter(cand[2])
-        if college in ('UW', 'VU', 'VW', 'VV', 'UU', 'WV'):
-            college = 'VV'
-            
-        # Parse the rest
-        rest = cand[3:]
-        branch = None
-        branch_idx = -1
-        
-        # Scan for a valid branch in the remaining characters
-        for j in range(len(rest) - 1):
-            b_cand = to_letter(rest[j]) + to_letter(rest[j+1])
-            if rest[j] == 'C' and rest[j+1] in ('1', 'I', 'L', 'T', 'J'):
-                branch = 'C1'
-                branch_idx = j
-                break
-            resolved = resolve_branch(b_cand)
-            if resolved in VALID_BRANCHES and resolved != "CS":
-                branch = resolved
-                branch_idx = j
-                break
-                
-        # If no specific branch is matched, check for any double letter
-        if not branch:
-            for j in range(len(rest) - 1):
-                if to_letter(rest[j]).isalpha() and to_letter(rest[j+1]).isalpha():
-                    branch = resolve_branch(to_letter(rest[j]) + to_letter(rest[j+1]))
-                    branch_idx = j
-                    break
-                    
-        # Default fallback
-        if not branch:
-            branch = "CS"
-            branch_idx = 2
-            
-        # Extract Year and Roll based on branch position
-        year_part = rest[:branch_idx]
-        year = "".join(to_digit(c) for c in year_part)
-        if len(year) == 1:
-            year = '2' + year  # e.g., '3' -> '23'
-        elif len(year) == 0:
-            year = '23'
-        elif len(year) > 2:
-            year = year[-2:]
-            
-        if year not in ('21', '22', '23', '24', '25'):
-            year = '23'
-            
-        roll_part = roll_part = rest[branch_idx+2:]
-        roll = "".join(to_digit(c) for c in roll_part)
-        roll = "".join(c for c in roll if c.isdigit()) # Ensure only digits in roll
-        if len(roll) > 4:
-            roll = roll[:3]
-            
-        # Score template alignment
-        score = 0
-        if cand[0].isdigit(): score += 1
-        if cand[1].isalpha(): score += 1
-        if cand[2].isalpha(): score += 1
-        if len(year_part) == 2 and all(c.isdigit() for c in year_part): score += 1
-        if branch != "CS": score += 2
-        if all(c.isdigit() for c in roll_part): score += 1
-        
-        corrected = p0 + college + year + branch + roll
-        if len(corrected) >= 10 and score > best_score:
-            best_score = score
-            best_usn = corrected
-            
-    return best_usn
 
+    raw = match.group(1)
 
-def clean_cell_patch(cell: np.ndarray, cell_size: int = 40) -> np.ndarray:
-    """Preprocess, denoise, and isolate the character contour in a cell box."""
-    if len(cell.shape) == 3 and cell.shape[2] == 3:
-        gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
+    # ── 6. Decode each structural segment ──
+    region = "4"
+    college = "VV"
+    year = "".join(_char_to_digit(c) for c in raw[3:5])
+
+    # Split branch vs roll in the remainder
+    tail = raw[5:]
+    if not tail:
+        return "UNKNOWN"
+
+    # Heuristic: if second char looks like a digit, branch is 1 char
+    c0 = tail[0]
+    c1 = tail[1] if len(tail) > 1 else ""
+
+    digit_like = set("0123456789OQZ")
+
+    if c0 == "C" and c1 in ("1", "I", "L", "T"):
+        # C1 is a valid branch
+        branch_raw = c0 + c1
+        roll_raw = tail[2:]
+    elif c1 in digit_like:
+        branch_raw = c0
+        roll_raw = tail[1:]
     else:
-        gray = cell.copy()
-        
-    # Otsu thresholding (dark text -> black, paper -> white)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    
-    # Remove outer border: clear the outer 2 pixels to erase box boundaries
-    border = 2
-    thresh[:border, :] = 0
-    thresh[-border:, :] = 0
-    thresh[:, :border] = 0
-    thresh[:, -border:] = 0
-    
-    # Find contours
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    
-    # Create clean white cell background
-    clean_cell = np.full((cell_size, cell_size), 255, dtype=np.uint8)
-    
-    if contours:
-        # Get largest contour (the character)
-        c = max(contours, key=cv2.contourArea)
-        x, y, w_c, h_c = cv2.boundingRect(c)
-        
-        # Crop character and invert to black text on white
-        char_crop = thresh[y:y+h_c, x:x+w_c]
-        char_crop_inv = cv2.bitwise_not(char_crop)
-        
-        # Resize to fit in clean cell preserving aspect ratio
-        max_dim = int(cell_size * 0.70)
-        if w_c > h_c:
-            new_w = max_dim
-            new_h = max(1, int(h_c * (max_dim / w_c)))
-        else:
-            new_h = max_dim
-            new_w = max(1, int(w_c * (max_dim / h_c)))
-            
-        char_resized = cv2.resize(char_crop_inv, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        
-        # Center the character inside the clean cell
-        dx = (cell_size - new_w) // 2
-        dy = (cell_size - new_h) // 2
-        clean_cell[dy:dy+new_h, dx:dx+new_w] = char_resized
-        
-    return clean_cell
+        branch_raw = c0 + c1
+        roll_raw = tail[2:]
+
+    branch = resolve_branch(branch_raw)
+    roll = "".join(_char_to_digit(c) for c in roll_raw)
+
+    usn = region + college + year + branch + roll
+    return usn
 
 
-def extract_usn_from_roi(image: np.ndarray, x1: float, y1: float, x2: float, y2: float) -> str:
+# ---------------------------------------------------------------------------
+# Image preprocessing helpers
+# ---------------------------------------------------------------------------
+def _preprocess_for_ocr(
+    gray: np.ndarray,
+    scale: float = 2.0,
+    method: str = "clahe",
+) -> np.ndarray:
     """
-    Crop the USN bounding box, run grid-splitting reconstruction consensus first,
-    and fall back to multi-candidate Tesseract OCR consensus if needed.
+    Resize and enhance a grayscale USN crop for OCR.
+
+    Methods:
+      - 'clahe'   : CLAHE histogram equalisation → adaptive threshold
+      - 'otsu'    : Otsu global threshold
+      - 'adaptive': Adaptive Gaussian threshold
+    """
+    # Up-scale for better character segmentation
+    large = cv2.resize(
+        gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
+    )
+
+    if method == "clahe":
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(large)
+        # Adaptive threshold produces cleaner strokes than Otsu on uneven lighting
+        processed = cv2.adaptiveThreshold(
+            enhanced, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=31,
+            C=15,
+        )
+    elif method == "otsu":
+        _, processed = cv2.threshold(
+            large, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+    elif method == "adaptive":
+        processed = cv2.adaptiveThreshold(
+            large, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            blockSize=21,
+            C=10,
+        )
+    else:
+        processed = large
+
+    return processed
+
+
+# ---------------------------------------------------------------------------
+# Multi-scale EasyOCR runner
+# ---------------------------------------------------------------------------
+def _run_easyocr_on_image(img: np.ndarray) -> str:
+    """
+    Run EasyOCR on a preprocessed image with character whitelisting.
+    Returns the concatenated raw text (uppercase, alphanumeric only).
+    """
+    reader = _get_reader()
+    results = reader.readtext(
+        img,
+        allowlist=_ALPHANUMERIC_WHITELIST,
+        detail=0,               # return strings only
+        paragraph=True,         # merge nearby text boxes
+        min_size=5,
+        text_threshold=0.3,
+        low_text=0.3,
+        mag_ratio=1.0,          # Disable internal CRAFT magnification to save 40%+ CPU latency
+    )
+    raw = " ".join(results).strip().upper()
+    # Final cleanup: keep only A-Z 0-9
+    raw = re.sub(r"[^A-Z0-9]", "", raw)
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+def extract_usn_from_roi(
+    image: np.ndarray,
+    x1: float, y1: float,
+    x2: float, y2: float,
+) -> str:
+    """
+    Crop the USN bounding box detected by YOLO, run multi-scale EasyOCR
+    with alphanumeric whitelisting, and return the best VTU USN candidate.
+
+    Parameters
+    ----------
+    image : np.ndarray
+        The full preprocessed OMR sheet image (BGR).
+    x1, y1, x2, y2 : float
+        YOLO-detected bounding box coordinates for the USN region.
+
+    Returns
+    -------
+    str
+        Corrected USN string, or ``"UNKNOWN"`` if extraction fails.
     """
     h, w = image.shape[:2]
-    box_w = x2 - x1
-    box_h = y2 - y1
-    
-    # ── Method 1: Grid-Splitting Reconstruction & EasyOCR Consensus ───────
-    try:
-        # Standard relative USN grid coordinates inside header row box
-        grid_x1 = max(0, int(x1 + box_w * 0.096))
-        grid_x2 = min(w, int(x1 + box_w * 0.358))
-        grid_y1 = max(0, int(y1 + box_h * 0.446))
-        grid_y2 = min(h, int(y1 + box_h * 1.0))
-        
-        cw = grid_x2 - grid_x1
-        col_w = cw / 10.0
-        
-        cleaned_cells = []
-        for i in range(10):
-            c_start = int(grid_x1 + i * col_w)
-            c_end = int(grid_x1 + (i + 1) * col_w)
-            cell = image[grid_y1:grid_y2, c_start:c_end]
-            cleaned_cells.append(clean_cell_patch(cell))
-            
-        reconstructed = np.hstack(cleaned_cells)
-        
-        # Debug save
-        debug_dir = Path(__file__).parent.parent / "debug_output"
-        debug_dir.mkdir(exist_ok=True)
-        cv2.imwrite(str(debug_dir / "reconstructed_consensus.png"), reconstructed)
-        
-        # Run EasyOCR
-        reader = _get_reader()
-        results = reader.readtext(reconstructed, detail=0)
-        if results:
-            raw_text = "".join(results).strip()
-            corrected = correct_usn_format(raw_text)
-            if corrected != "UNKNOWN" and corrected.startswith("4VV") and len(corrected) == 10:
-                print(f"[USN Grid-Splitting EasyOCR] Success: '{corrected}' (Raw: '{raw_text}')")
-                return corrected
-    except Exception as e:
-        print(f"[USN Grid-Splitting EasyOCR Error] {e}")
 
-    # ── Method 2: Full-box Multi-Candidate Tesseract Fallback ─────────────
-    # Crop the Date + USN area (left 42% of header row box)
+    # ── 1. Crop the USN area (left 42 % of the header-row box) ───────────
+    box_w = x2 - x1
     x2_cropped = x1 + (box_w * 0.42)
+
     pad = 8
     rx1 = max(0, int(x1) - pad)
     ry1 = max(0, int(y1) - pad)
     rx2 = min(w, int(x2_cropped) + pad)
     ry2 = min(h, int(y2) + pad)
-    
+
+    if rx2 <= rx1 or ry2 <= ry1:
+        return "UNKNOWN"
+
     roi = image[ry1:ry2, rx1:rx2]
     if roi.size == 0:
         return "UNKNOWN"
-        
+
+    # ── Debug: save crop for inspection ───────────────────────────────────
     debug_dir = Path(__file__).parent.parent / "debug_output"
     debug_dir.mkdir(exist_ok=True)
     cv2.imwrite(str(debug_dir / "usn_crop_test.png"), roi)
-        
+
+    # ── 2. Convert to grayscale ───────────────────────────────────────────
     if len(roi.shape) == 3 and roi.shape[2] == 3:
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
     else:
         gray = roi.copy()
-        
-    candidates = []
-    
-    # Ordered search space
-    search_space = [
-        (2.0, "otsu", 6),
-        (3.0, "otsu", 6),
-        (2.0, "equalized", 6),
-        (3.0, "equalized", 6),
-        (2.0, "otsu_inv", 6),
-        (3.0, "otsu_inv", 6),
-        (2.0, "large_gray", 6),
-        (3.0, "large_gray", 6),
-        (2.0, "otsu", 3),
-        (3.0, "otsu", 3),
-        (2.0, "otsu", 4),
-        (3.0, "otsu", 4),
-    ]
-    
-    scaled_images = {}
-    for scale in [2.0, 3.0]:
-        scaled_images[scale] = cv2.resize(gray, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        
-    for scale, var_name, psm in search_space:
-        large = scaled_images[scale]
-        
-        if var_name == "large_gray":
-            img_var = large
-        elif var_name == "equalized":
-            img_var = cv2.equalizeHist(large)
-        elif var_name == "otsu":
-            _, img_var = cv2.threshold(large, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        elif var_name == "otsu_inv":
-            _, img_var = cv2.threshold(large, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        else:
-            continue
-            
-        try:
-            custom_config = f'--psm {psm} --oem 3'
-            raw_text = pytesseract.image_to_string(img_var, config=custom_config).strip()
-            if not raw_text:
-                continue
-                
-            corrected = correct_usn_format(raw_text)
-            if corrected != "UNKNOWN":
-                if corrected.startswith("4VV") and len(corrected) == 10:
-                    print(f"[USN Tesseract Fast-Path] Found perfect match '{corrected}' using scale={scale}, {var_name}, psm={psm}")
-                    return corrected
-                    
-                candidates.append((corrected, raw_text, var_name, psm, scale))
-        except Exception as e:
-            # Silence/catch tesseract errors if binary not installed
-            pass
-            
-    # Also try EasyOCR on full crop as fallback
+
+    # ── 3. Optimized 2-stage OCR: Run fast 2.0 CLAHE first, fallback to 3.0 only if needed ──
+    candidates: List[Tuple[str, str, float, str]] = []
+
+    # Stage 1: Fast Pass (2.0 scale)
     try:
-        reader = _get_reader()
-        results = reader.readtext(roi, detail=0)
-        if results:
-            raw_text = " ".join(results).strip()
+        processed = _preprocess_for_ocr(gray, scale=2.0, method="clahe")
+        raw_text = _run_easyocr_on_image(processed)
+        if raw_text:
             corrected = correct_usn_format(raw_text)
             if corrected != "UNKNOWN":
-                if corrected.startswith("4VV") and len(corrected) == 10:
-                    print(f"[USN EasyOCR Fallback] Found match '{corrected}'")
+                # Fast path exit: starts with 4VV and plausible VTU length (9-11 chars)
+                if corrected.startswith("4VV") and 9 <= len(corrected) <= 11:
+                    print(f"[USN EasyOCR Fast-Path] '{corrected}' (raw='{raw_text}', scale=2.0, clahe)")
                     return corrected
-                candidates.append((corrected, raw_text, "easyocr", 0, 1.0))
-    except Exception as e:
-        print(f"[USN EasyOCR Fallback Error] {e}")
-            
-    # Rank candidates:
-    # 1. Matches expected OMR USN prefix (starts with "4VV")
-    # 2. Closest to correct length (10 characters)
+                candidates.append((corrected, raw_text, 2.0, "clahe"))
+    except Exception as exc:
+        print(f"[USN EasyOCR Error] Stage 1 (scale=2.0, clahe): {exc}")
+
+    # Stage 2: Fallback Pass (3.0 scale) - Only executed if Stage 1 didn't find a valid USN
+    if not candidates or not any(c[0].startswith("4VV") for c in candidates):
+        try:
+            processed = _preprocess_for_ocr(gray, scale=3.0, method="clahe")
+            raw_text = _run_easyocr_on_image(processed)
+            if raw_text:
+                corrected = correct_usn_format(raw_text)
+                if corrected != "UNKNOWN":
+                    if corrected.startswith("4VV") and 9 <= len(corrected) <= 11:
+                        print(f"[USN EasyOCR Fast-Path Fallback] '{corrected}' (raw='{raw_text}', scale=3.0, clahe)")
+                        return corrected
+                    candidates.append((corrected, raw_text, 3.0, "clahe"))
+        except Exception as exc:
+            print(f"[USN EasyOCR Error] Stage 2 (scale=3.0, clahe): {exc}")
+
+    # ── 4. Rank candidates ───────────────────────────────────────────────
     if candidates:
-        candidates.sort(key=lambda x: (
-            0 if x[0].startswith("4VV") else 1,
-            abs(len(x[0]) - 10)
+        candidates.sort(key=lambda c: (
+            0 if c[0].startswith("4VV") else 1,   # prefer 4VV prefix
+            abs(len(c[0]) - 10),                   # prefer length ≈ 10
         ))
         best = candidates[0]
-        print(f"[USN Tesseract/EasyOCR Multi-Candidate Fallback] Best: '{best[0]}' from Raw: '{best[1]}' (method: {best[2]}, psm: {best[3]}, scale: {best[4]})")
+        print(f"[USN EasyOCR Consensus] Best: '{best[0]}' (raw='{best[1]}', scale={best[2]}, {best[3]})")
         return best[0]
-        
-    print("[USN OCR] No valid USN found among candidates")
+
+    print("[USN EasyOCR] No valid USN found among candidates")
     return "UNKNOWN"

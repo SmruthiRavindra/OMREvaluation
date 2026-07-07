@@ -201,3 +201,54 @@ export async function getTaskStatusV1(req, res) {
     return res.status(err.response?.status || 502).json({ error: detail });
   }
 }
+
+// ── Proxy helpers for separating frontend to static deployment ─────────────
+
+export async function proxyAnswerKey(req, res) {
+  try {
+    const { data } = await axios.post(`${FASTAPI_URL}/answer-key`, req.body, {
+      timeout: 10_000,
+    });
+    return res.json(data);
+  } catch (err) {
+    const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
+    console.error('[proxyAnswerKey] error:', detail);
+    return res.status(err.response?.status || 502).json({ error: detail });
+  }
+}
+
+export async function proxyReScore(req, res) {
+  try {
+    const { data } = await axios.post(`${FASTAPI_URL}/re-score`, req.body, {
+      timeout: 15_000,
+    });
+    return res.json(data);
+  } catch (err) {
+    const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
+    console.error('[proxyReScore] error:', detail);
+    return res.status(err.response?.status || 502).json({ error: detail });
+  }
+}
+
+export async function proxyDebugEvaluate(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded. Use field name "file".' });
+  }
+  try {
+    const form = new FormData();
+    form.append('file', req.file.buffer, {
+      filename: req.file.originalname || 'sheet.jpg',
+      contentType: req.file.mimetype,
+    });
+    const { data } = await axios.post(`${FASTAPI_URL}/debug/evaluate`, form, {
+      headers: form.getHeaders(),
+      timeout: 25_000,
+      maxBodyLength: Infinity,
+    });
+    return res.json(data);
+  } catch (err) {
+    const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
+    console.error('[proxyDebugEvaluate] error:', detail);
+    return res.status(err.response?.status || 502).json({ error: detail });
+  }
+}

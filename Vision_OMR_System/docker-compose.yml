@@ -21,7 +21,7 @@ services:
       POSTGRES_USER: omr_user
       POSTGRES_PASSWORD: omr_password_dev
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Auto-run migrations on first start
