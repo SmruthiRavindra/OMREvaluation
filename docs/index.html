@@ -1779,13 +1779,7 @@
         webcamStatus.style.color = 'var(--text-secondary)';
         
         // Initialize WebSocket
-        let wsUrl;
-        if (window.location.hostname.includes('github.io')) {
-          wsUrl = `${WEBSOCKET_BACKEND_URL}/ws/evaluate`;
-        } else {
-          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          wsUrl = `${protocol}//${window.location.host}/ws/evaluate`;
-        }
+        let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
         ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
