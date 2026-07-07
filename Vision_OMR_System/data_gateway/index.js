@@ -32,6 +32,9 @@ import {
   getHistory,
   evaluateBatchV1,
   getTaskStatusV1,
+  proxyAnswerKey,
+  proxyReScore,
+  proxyDebugEvaluate,
 } from './controllers/evaluationController.js';
 
 import {
@@ -76,6 +79,11 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'data-gatewa
 app.post('/api/evaluate', upload.single('file'), evaluateSheet);
 app.post('/api/submit',   submitResults);
 app.get('/api/history',   getHistory);
+
+// Separated frontend deployment FastAPI proxies
+app.post('/answer-key', proxyAnswerKey);
+app.post('/re-score', proxyReScore);
+app.post('/debug/evaluate', upload.single('file'), proxyDebugEvaluate);
 
 // Async Batch Ingestion Routes (V1)
 app.post('/api/v1/evaluate', upload.array('files'), evaluateBatchV1);
