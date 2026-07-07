@@ -52,7 +52,7 @@ const app  = express();
 const PORT = Number(process.env.PORT ?? 3000);
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-app.use(helmet());         // security headers
+app.use(helmet({ crossOriginResourcePolicy: false })); // security headers (allow CORS)
 app.use(cors());           // allow all origins (restrict in production)
 app.use(morgan('dev'));    // HTTP request logging
 app.use(express.json({ limit: '10mb' }));
