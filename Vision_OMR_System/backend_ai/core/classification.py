@@ -132,6 +132,12 @@ def classify_all(
 
     results = []
     
+    # Pre-compute the distance mask ONCE (all ROIs are 64×64)
+    cx, cy = 32.0, 32.0
+    h_idx, w_idx = np.indices((64, 64))
+    dist_from_center = np.sqrt((h_idx - cy) ** 2 + (w_idx - cx) ** 2)
+    outer_mask = dist_from_center > 26.0
+    
     for det in detections:
         roi = _crop_roi(image, det)
         gray, mask = _extract_inner_region(roi)
@@ -141,10 +147,6 @@ def classify_all(
         std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
         
         # Calculate local paper reference using corners of 64x64 ROI
-        cx, cy = 32.0, 32.0
-        h_idx, w_idx = np.indices((64, 64))
-        dist_from_center = np.sqrt((h_idx - cy) ** 2 + (w_idx - cx) ** 2)
-        outer_mask = dist_from_center > 26.0
         local_paper = float(np.percentile(gray[outer_mask], 90)) if np.any(outer_mask) else 255.0
         
         contrast_diff = local_paper - mean_inner
