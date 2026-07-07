@@ -107,24 +107,35 @@ def _canny_edges(gray: np.ndarray) -> np.ndarray:
 def _find_sheet_corners(edges: np.ndarray) -> np.ndarray | None:
     """
     Detect the four corners of the OMR sheet via contour analysis.
-
-    Returns a (4, 2) float32 array [TL, TR, BR, BL] or None if not found.
+    Optimised for cluttered backgrounds in live webcam feeds.
     """
     contours, _ = cv2.findContours(
-        edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
     )
     if not contours:
         return None
 
-    largest = max(contours, key=cv2.contourArea)
-    peri = cv2.arcLength(largest, True)
-    approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
-
-    if len(approx) != 4:
-        return None
-
-    pts = approx.reshape(4, 2).astype(np.float32)
-    return _order_points(pts)
+    # Sort contours by area descending and check top candidates
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+    
+    h_f, w_f = edges.shape[:2]
+    total_area = h_f * w_f
+    min_area = total_area * 0.08  # Sheet must occupy at least 8% of the frame
+    
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area:
+            continue
+            
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        
+        # Check if the contour is a convex 4-corner polygon
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            pts = approx.reshape(4, 2).astype(np.float32)
+            return _order_points(pts)
+            
+    return None
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:

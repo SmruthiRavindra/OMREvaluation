@@ -20,6 +20,7 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
+# pyrefly: ignore [missing-import]
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
@@ -924,3 +925,128 @@ async def dashboard():
     if not html_path.exists():
         raise HTTPException(status_code=404, detail="Dashboard not found. Create backend_ai/static/dashboard.html")
     return html_path.read_text(encoding="utf-8")
+
+
+# ── Live Webcam WebSocket ────────────────────────────────────────────────────
+
+from fastapi import WebSocket, WebSocketDisconnect
+import json
+import base64
+
+@app.websocket("/ws/evaluate")
+async def websocket_evaluate(websocket: WebSocket):
+    await websocket.accept()
+    print("[WebSocket] Client connected")
+    try:
+        while True:
+            # Receive frame data (base64 string inside json)
+            data = await websocket.receive_text()
+            payload = json.loads(data)
+            
+            img_b64 = payload.get("image")
+            session_id = payload.get("session_id", "default")
+            
+            if not img_b64:
+                continue
+                
+            # Decode base64 bytes
+            if "," in img_b64:
+                img_b64 = img_b64.split(",")[1]
+            img_bytes = base64.b64decode(img_b64)
+            
+            # Preprocess
+            try:
+                clean_img = preprocess_image(img_bytes)
+            except Exception as e:
+                print(f"[WebSocket Preprocess Error] {e}")
+                continue
+                
+            # Localize
+            detections = run_yolo_inference(clean_img)
+            usn_dets = [d for d in detections if d.class_name == "usn"]
+            bubble_dets = [d for d in detections if d.class_name != "usn"]
+            
+            # Extract USN
+            usn_value = None
+            if usn_dets:
+                det = usn_dets[0]
+                usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+                
+            # Classify
+            classifications = classify_all(clean_img, bubble_dets)
+            
+            # Grade
+            answer_key = _answer_keys.get(session_id) if session_id else None
+            usn_y2 = usn_dets[0].y2 if usn_dets else None
+            layout = SheetLayout(questions_per_column=15, num_columns=2, options="ABCD")
+            score_report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
+            
+            # Annotate clean image for visual feedback
+            annotated_img = clean_img.copy()
+            for cr in classifications:
+                color = (0, 255, 0) if cr.state == BubbleState.FILLED else (0, 0, 255) if cr.state == BubbleState.AMBIGUOUS else (128, 128, 128)
+                det = cr.detection
+                cv2.rectangle(annotated_img, (int(det.x1), int(det.y1)), (int(det.x2), int(det.y2)), color, 2)
+                cv2.putText(annotated_img, cr.state.value, (int(det.x1), int(det.y1) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.4, color, 1)
+                
+            # Draw USN bounding box
+            if usn_dets:
+                det = usn_dets[0]
+                cv2.rectangle(annotated_img, (int(det.x1), int(det.y1)), (int(det.x2), int(det.y2)), (255, 0, 0), 2)
+                if usn_value:
+                    cv2.putText(annotated_img, f"USN: {usn_value}", (int(det.x1), int(det.y1) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                    
+            # Encode annotated image back to base64 jpeg
+            _, buffer = cv2.imencode(".jpg", annotated_img)
+            annotated_b64 = base64.b64encode(buffer).decode("utf-8")
+            
+            # Count statuses
+            filled = sum(1 for c in classifications if c.state == BubbleState.FILLED)
+            empty = sum(1 for c in classifications if c.state == BubbleState.EMPTY)
+            ambig = sum(1 for c in classifications if c.state == BubbleState.AMBIGUOUS)
+            
+            # Prepare response dict
+            score_report_dict = None
+            if score_report:
+                score_report_dict = {
+                    "total_questions": score_report.total_questions,
+                    "correct": score_report.correct,
+                    "incorrect": score_report.incorrect,
+                    "unanswered": score_report.unanswered,
+                    "multiple_marked": score_report.multiple_marked,
+                    "score_percent": score_report.score_percent,
+                    "per_question": [
+                        {
+                            "question_number": q.question_number,
+                            "marked_options": q.marked_options,
+                            "correct_option": q.correct_option,
+                            "status": q.status
+                        } for q in score_report.per_question
+                    ]
+                }
+                
+            response = {
+                "usn": usn_value or "UNKNOWN",
+                "filled_count": filled,
+                "empty_count": empty,
+                "ambiguous_count": ambig,
+                "needs_manual_review": ambig > 0,
+                "score_report": score_report_dict,
+                "bubbles": [
+                    {
+                        "index": idx,
+                        "state": c.state.value,
+                        "confidence": c.detection.confidence,
+                        "fill_ratio": c.fill_ratio,
+                        "needs_review": c.state == BubbleState.AMBIGUOUS
+                    } for idx, c in enumerate(classifications)
+                ],
+                "annotated_image_b64": annotated_b64
+            }
+            
+            await websocket.send_text(json.dumps(response))
+            
+    except WebSocketDisconnect:
+        print("[WebSocket] Client disconnected gracefully")
+    except Exception as e:
+        print(f"[WebSocket] Error: {e}")

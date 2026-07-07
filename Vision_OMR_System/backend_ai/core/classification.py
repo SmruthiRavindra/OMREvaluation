@@ -106,17 +106,54 @@ def classify_bubble(
     
     contrast_diff = local_paper - mean_inner
     
-    is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
-    is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
+    # Otsu fill ratio for fallback/meta compatibility if needed
+    mask_pixels = np.count_nonzero(mask)
+    _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    otsu_masked = cv2.bitwise_and(otsu_bin, mask)
+    fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
     
-    if is_filled:
-        state = BubbleState.FILLED
-    elif is_empty:
-        state = BubbleState.EMPTY
+    # Calculate core fill ratio (inner 50% radius of the mask)
+    mask_coords = np.where(mask > 0)
+    if len(mask_coords[0]) > 0:
+        cx_m = float(np.mean(mask_coords[1]))
+        cy_m = float(np.mean(mask_coords[0]))
+        r_m = float(np.mean(np.sqrt((mask_coords[0] - cy_m)**2 + (mask_coords[1] - cx_m)**2)))
     else:
-        state = BubbleState.AMBIGUOUS
+        cx_m, cy_m, r_m = 32.0, 32.0, 13.0
         
-    return ClassificationResult(detection, state, 0.0)
+    core_mask = np.zeros_like(mask)
+    cv2.circle(core_mask, (int(cx_m), int(cy_m)), max(2, int(r_m * 0.50)), 255, -1)
+    core_pixels = np.count_nonzero(core_mask)
+    otsu_core = cv2.bitwise_and(otsu_bin, core_mask)
+    core_fill = np.count_nonzero(otsu_core) / core_pixels if core_pixels > 0 else 0.0
+    
+    # YOLO override / verification
+    if detection.class_name == "unfilled" and detection.confidence >= 0.65:
+        state = BubbleState.EMPTY
+    elif detection.class_name == "filled" and detection.confidence >= 0.80:
+        # Prevent false positive filled classifications due to shadow/gradient
+        if contrast_diff < 15.0 and fill_ratio < 0.25:
+            state = BubbleState.EMPTY
+        else:
+            state = BubbleState.FILLED
+    else:
+        # Fall back to pixel intensity logic (for low confidence/erased bubbles)
+        is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16) or (mean_inner < 50.0)
+        is_empty = ((contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)) and (mean_inner >= 50.0)
+        
+        if is_filled:
+            if core_fill >= 0.45 and fill_ratio >= 0.45:
+                state = BubbleState.FILLED
+            elif core_fill < 0.30 and fill_ratio < 0.35:
+                state = BubbleState.EMPTY
+            else:
+                state = BubbleState.AMBIGUOUS
+        elif is_empty:
+            state = BubbleState.EMPTY
+        else:
+            state = BubbleState.AMBIGUOUS
+        
+    return ClassificationResult(detection, state, fill_ratio)
 
 
 def classify_all(
@@ -138,7 +175,6 @@ def classify_all(
         
         mask_indices = mask > 0
         mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
-        std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
         
         # Calculate local paper reference using corners of 64x64 ROI
         cx, cy = 32.0, 32.0
@@ -149,31 +185,53 @@ def classify_all(
         
         contrast_diff = local_paper - mean_inner
         
-        is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
-        is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
-        
-        if is_filled:
-            if std_inner < 28.0:
-                state = BubbleState.FILLED
-            else:
-                state = BubbleState.AMBIGUOUS
-        elif is_empty:
-            state = BubbleState.EMPTY
-        else:
-            # Ambiguous zone: verify with YOLO model's confidence
-            if det.class_name == "unfilled" and det.confidence > 0.75:
-                state = BubbleState.EMPTY
-            elif det.class_name == "filled" and det.confidence > 0.80:
-                state = BubbleState.FILLED
-            else:
-                state = BubbleState.AMBIGUOUS
-                
         # Otsu fill ratio for fallback/meta compatibility if needed
         mask_pixels = np.count_nonzero(mask)
         _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         otsu_masked = cv2.bitwise_and(otsu_bin, mask)
         fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
         
+        # Calculate core fill ratio (inner 50% radius of the mask)
+        mask_coords = np.where(mask > 0)
+        if len(mask_coords[0]) > 0:
+            cx_m = float(np.mean(mask_coords[1]))
+            cy_m = float(np.mean(mask_coords[0]))
+            r_m = float(np.mean(np.sqrt((mask_coords[0] - cy_m)**2 + (mask_coords[1] - cx_m)**2)))
+        else:
+            cx_m, cy_m, r_m = 32.0, 32.0, 13.0
+            
+        core_mask = np.zeros_like(mask)
+        cv2.circle(core_mask, (int(cx_m), int(cy_m)), max(2, int(r_m * 0.50)), 255, -1)
+        core_pixels = np.count_nonzero(core_mask)
+        otsu_core = cv2.bitwise_and(otsu_bin, core_mask)
+        core_fill = np.count_nonzero(otsu_core) / core_pixels if core_pixels > 0 else 0.0
+        
+        # YOLO override / verification
+        if det.class_name == "unfilled" and det.confidence >= 0.65:
+            state = BubbleState.EMPTY
+        elif det.class_name == "filled" and det.confidence >= 0.80:
+            # Prevent false positive filled classifications due to shadow/gradient
+            if contrast_diff < 15.0 and fill_ratio < 0.25:
+                state = BubbleState.EMPTY
+            else:
+                state = BubbleState.FILLED
+        else:
+            # Fall back to pixel intensity logic (for low confidence/erased bubbles)
+            is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16) or (mean_inner < 50.0)
+            is_empty = ((contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)) and (mean_inner >= 50.0)
+            
+            if is_filled:
+                if core_fill >= 0.45 and fill_ratio >= 0.45:
+                    state = BubbleState.FILLED
+                elif core_fill < 0.30 and fill_ratio < 0.35:
+                    state = BubbleState.EMPTY
+                else:
+                    state = BubbleState.AMBIGUOUS
+            elif is_empty:
+                state = BubbleState.EMPTY
+            else:
+                state = BubbleState.AMBIGUOUS
+                
         results.append(ClassificationResult(det, state, fill_ratio))
         
     return results
