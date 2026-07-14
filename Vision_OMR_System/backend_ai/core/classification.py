@@ -103,15 +103,12 @@ def classify_bubble(
     dist_from_center = np.sqrt((h_idx - cy) ** 2 + (w_idx - cx) ** 2)
     outer_mask = dist_from_center > 26.0
     local_paper = float(np.percentile(gray[outer_mask], 90)) if np.any(outer_mask) else 255.0
-    
     contrast_diff = local_paper - mean_inner
+    ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
     
-    is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
-    is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
-    
-    if is_filled:
+    if contrast_diff >= 32.0 and ratio >= 0.15:
         state = BubbleState.FILLED
-    elif is_empty:
+    elif contrast_diff <= 20.0 or ratio <= 0.09:
         state = BubbleState.EMPTY
     else:
         state = BubbleState.AMBIGUOUS
@@ -150,16 +147,14 @@ def classify_all(
         local_paper = float(np.percentile(gray[outer_mask], 90)) if np.any(outer_mask) else 255.0
         
         contrast_diff = local_paper - mean_inner
+        ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
         
-        is_filled = (contrast_diff >= 35.0) or (local_paper > 0 and (contrast_diff / local_paper) >= 0.16)
-        is_empty = (contrast_diff <= 18.0) or (local_paper > 0 and (contrast_diff / local_paper) <= 0.08)
-        
-        if is_filled:
+        if contrast_diff >= 32.0 and ratio >= 0.15:
             if std_inner < 28.0:
                 state = BubbleState.FILLED
             else:
                 state = BubbleState.AMBIGUOUS
-        elif is_empty:
+        elif contrast_diff <= 20.0 or ratio <= 0.09:
             state = BubbleState.EMPTY
         else:
             # Ambiguous zone: verify with YOLO model's confidence
