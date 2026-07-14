@@ -174,7 +174,6 @@ server.on('upgrade', (request, socket, head) => {
       const backendWs = new WSClient(targetWsUrl, {
         headers: {
           'user-agent': request.headers['user-agent'] || 'Mozilla/5.0',
-          'origin': request.headers['origin'] || 'https://smruthiravindra.github.io',
         }
       });
       
