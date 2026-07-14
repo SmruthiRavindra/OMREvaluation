@@ -213,7 +213,11 @@ export async function proxyAnswerKey(req, res) {
   } catch (err) {
     const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
     console.error('[proxyAnswerKey] error:', detail);
-    return res.status(err.response?.status || 502).json({ error: detail });
+    return res.status(err.response?.status || 502).json({
+      error: `Gateway proxy failed for ${FASTAPI_URL}/answer-key`,
+      code: err.code || 'UNKNOWN',
+      detail: detail
+    });
   }
 }
 
@@ -226,7 +230,11 @@ export async function proxyReScore(req, res) {
   } catch (err) {
     const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
     console.error('[proxyReScore] error:', detail);
-    return res.status(err.response?.status || 502).json({ error: detail });
+    return res.status(err.response?.status || 502).json({
+      error: `Gateway proxy failed for ${FASTAPI_URL}/re-score`,
+      code: err.code || 'UNKNOWN',
+      detail: detail
+    });
   }
 }
 
@@ -249,6 +257,10 @@ export async function proxyDebugEvaluate(req, res) {
   } catch (err) {
     const detail = err.response?.data?.detail || err.message || 'FastAPI proxy error';
     console.error('[proxyDebugEvaluate] error:', detail);
-    return res.status(err.response?.status || 502).json({ error: detail });
+    return res.status(err.response?.status || 502).json({
+      error: `Gateway proxy failed for ${FASTAPI_URL}/debug/evaluate`,
+      code: err.code || 'UNKNOWN',
+      detail: detail
+    });
   }
 }

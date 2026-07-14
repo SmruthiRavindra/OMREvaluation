@@ -153,7 +153,7 @@ server.on('upgrade', (request, socket, head) => {
       
       backendWs.on('error', (err) => {
         console.error('[Gateway WS Proxy] Backend error:', err.message);
-        ws.close(1011, 'Backend connection error');
+        ws.close(1011, `Backend connection error to ${targetWsUrl}: ${err.message}`);
       });
       
       ws.on('message', (message, isBinary) => {
