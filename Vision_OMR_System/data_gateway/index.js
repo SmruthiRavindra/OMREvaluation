@@ -46,6 +46,7 @@ import {
   getSession,
   getPendingCount
 } from './controllers/reportController.js';
+import { runMigrations } from './config/migrator.js';
 
 // ── App setup ──────────────────────────────────────────────────────────────
 const app  = express();
@@ -111,9 +112,15 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   console.log(`[Gateway] Listening on port ${PORT}`);
   console.log(`[Gateway] Proxying to FastAPI at: ${process.env.FASTAPI_URL ?? 'http://localhost:8000'}`);
+  
+  try {
+    await runMigrations();
+  } catch (err) {
+    console.error('[Gateway Startup] Database migration failed:', err.message);
+  }
 });
 
 // ── WebSocket Proxying ──────────────────────────────────────────────────────
