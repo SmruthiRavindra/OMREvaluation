@@ -22,18 +22,27 @@ import 'dotenv/config';
 
 const { Pool } = pg;
 
+const isProduction = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('render.com');
+
+const poolConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
+    }
+  : {
+      host:              process.env.PGHOST     ?? 'localhost',
+      port:              Number(process.env.PGPORT ?? 5432),
+      database:          process.env.PGDATABASE ?? 'omr_db',
+      user:              process.env.PGUSER,
+      password:          process.env.PGPASSWORD,
+      ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : false,
+    };
+
 const pool = new Pool({
-  host:              process.env.PGHOST     ?? 'localhost',
-  port:              Number(process.env.PGPORT ?? 5432),
-  database:          process.env.PGDATABASE ?? 'omr_db',
-  user:              process.env.PGUSER,
-  password:          process.env.PGPASSWORD,
+  ...poolConfig,
   max:               Number(process.env.DB_POOL_MAX         ?? 10),
   idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS  ?? 30_000),
   connectionTimeoutMillis: Number(process.env.DB_CONN_TIMEOUT_MS ?? 5_000),
-  ssl: process.env.PGSSL === 'true'
-    ? { rejectUnauthorized: false }
-    : false,
 });
 
 // ── Pool event hooks ───────────────────────────────────────────────────────
