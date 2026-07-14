@@ -47,6 +47,7 @@ import {
   getPendingCount
 } from './controllers/reportController.js';
 import { runMigrations } from './config/migrator.js';
+import pool from './config/database.js';
 
 // ── App setup ──────────────────────────────────────────────────────────────
 const app  = express();
@@ -85,6 +86,35 @@ app.get('/api/history',   getHistory);
 app.post('/answer-key', proxyAnswerKey);
 app.post('/re-score', proxyReScore);
 app.post('/debug/evaluate', upload.single('file'), proxyDebugEvaluate);
+
+app.get('/debug/db-status', async (_req, res) => {
+  try {
+    const tablesResult = await pool.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema='public'
+    `);
+    const tables = tablesResult.rows.map(r => r.table_name);
+    
+    let migrations = [];
+    if (tables.includes('schema_migrations')) {
+      const migResult = await pool.query('SELECT * FROM schema_migrations ORDER BY applied_at ASC');
+      migrations = migResult.rows;
+    }
+    
+    return res.json({
+      status: 'connected',
+      tables,
+      migrations,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      status: 'error',
+      message: err.message,
+      code: err.code,
+    });
+  }
+});
 
 // Async Batch Ingestion Routes (V1)
 app.post('/api/v1/evaluate', upload.array('files'), evaluateBatchV1);
