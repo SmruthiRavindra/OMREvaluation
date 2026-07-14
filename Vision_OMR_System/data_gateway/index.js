@@ -52,7 +52,7 @@ const app  = express();
 const PORT = Number(process.env.PORT ?? 3000);
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-app.use(helmet());         // security headers
+app.use(helmet({ crossOriginResourcePolicy: false })); // security headers (allow CORS)
 app.use(cors());           // allow all origins (restrict in production)
 app.use(morgan('dev'));    // HTTP request logging
 app.use(express.json({ limit: '10mb' }));
@@ -111,9 +111,70 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ──────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[Gateway] Listening on port ${PORT}`);
   console.log(`[Gateway] Proxying to FastAPI at: ${process.env.FASTAPI_URL ?? 'http://localhost:8000'}`);
+});
+
+// ── WebSocket Proxying ──────────────────────────────────────────────────────
+import { WebSocketServer, WebSocket as WSClient } from 'ws';
+
+const wss = new WebSocketServer({ noServer: true });
+const FASTAPI_URL = process.env.FASTAPI_URL ?? 'http://localhost:8000';
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  
+  if (url.pathname === '/ws/evaluate') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      // Derive backend websocket URL
+      let targetWsUrl = FASTAPI_URL.replace(/^http/, 'ws');
+      if (!targetWsUrl.endsWith('/ws/evaluate')) {
+        targetWsUrl = `${targetWsUrl.replace(/\/$/, '')}/ws/evaluate`;
+      }
+      
+      console.log(`[Gateway WS Proxy] Connecting to backend: ${targetWsUrl}`);
+      const backendWs = new WSClient(targetWsUrl);
+      
+      backendWs.on('open', () => {
+        console.log('[Gateway WS Proxy] Backend connection opened');
+      });
+      
+      backendWs.on('message', (message, isBinary) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(message, { binary: isBinary });
+        }
+      });
+      
+      backendWs.on('close', (code, reason) => {
+        console.log(`[Gateway WS Proxy] Backend closed: ${code} ${reason}`);
+        ws.close(code, reason);
+      });
+      
+      backendWs.on('error', (err) => {
+        console.error('[Gateway WS Proxy] Backend error:', err.message);
+        ws.close(1011, 'Backend connection error');
+      });
+      
+      ws.on('message', (message, isBinary) => {
+        if (backendWs.readyState === backendWs.OPEN) {
+          backendWs.send(message, { binary: isBinary });
+        }
+      });
+      
+      ws.on('close', (code, reason) => {
+        console.log(`[Gateway WS Proxy] Client closed: ${code} ${reason}`);
+        backendWs.close(code, reason);
+      });
+      
+      ws.on('error', (err) => {
+        console.error('[Gateway WS Proxy] Client error:', err.message);
+        backendWs.close(1011, 'Client error');
+      });
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 export default app;

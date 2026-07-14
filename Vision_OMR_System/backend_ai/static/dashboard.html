@@ -484,25 +484,44 @@
 
         <!-- Step 3: Upload Card -->
         <div class="card" style="margin-bottom: 20px;">
-          <div class="card-header">📷 Step 3: Upload OMR Sheet</div>
+          <div class="card-header">📷 Step 3: OMR Capture Mode</div>
           <div class="card-body">
-            <div class="upload-zone" id="uploadZone">
-              <div class="upload-icon">📄</div>
-              <div class="upload-title">Drop your OMR sheet here</div>
-              <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 50 pages</div>
-              <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf" multiple>
-              <div class="file-preview" id="filePreview" style="display:none;">
-                <img id="previewImg" alt="Preview" style="display:none;">
-                <div id="pdfPreview" style="display:none; color: var(--accent); padding: 40px 0; font-size: 14px; text-align: center; font-weight: bold;">
-                  📑 PDF Selected (Pages will be extracted)
+            <div class="image-tabs" style="margin-bottom: 16px;">
+              <button class="image-tab active" id="tabUploadMode" style="flex: 1; border: none; font-family: inherit;">Upload File</button>
+              <button class="image-tab" id="tabWebcamMode" style="flex: 1; border: none; font-family: inherit;">Live Webcam</button>
+            </div>
+
+            <!-- Upload File Mode -->
+            <div id="uploadModeContainer">
+              <div class="upload-zone" id="uploadZone">
+                <div class="upload-icon">📄</div>
+                <div class="upload-title">Drop your OMR sheet here</div>
+                <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 50 pages</div>
+                <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf" multiple>
+                <div class="file-preview" id="filePreview" style="display:none;">
+                  <img id="previewImg" alt="Preview" style="display:none;">
+                  <div id="pdfPreview" style="display:none; color: var(--accent); padding: 40px 0; font-size: 14px; text-align: center; font-weight: bold;">
+                    📑 PDF Selected (Pages will be extracted)
+                  </div>
                 </div>
+              </div>
+
+              <div style="margin-top: 16px;">
+                <button class="btn btn-primary" id="evaluateBtn" disabled>
+                  🔍 Run Evaluation Pipeline
+                </button>
               </div>
             </div>
 
-            <div style="margin-top: 16px;">
-              <button class="btn btn-primary" id="evaluateBtn" disabled>
-                🔍 Run Evaluation Pipeline
-              </button>
+            <!-- Live Webcam Mode -->
+            <div id="webcamModeContainer" style="display: none; text-align: center;">
+              <video id="webcamVideo" autoplay playsinline style="width: 100%; max-width: 600px; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0 auto 16px auto; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+              <canvas id="webcamCanvas" width="640" height="480" style="display: none;"></canvas>
+              <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 12px;">
+                <button class="btn btn-primary" id="startWebcamBtn" style="padding: 8px 16px; font-size: 13px; width: auto;">Start Camera</button>
+                <button class="btn btn-secondary" id="stopWebcamBtn" style="padding: 8px 16px; font-size: 13px; width: auto; display: none;">Stop Camera</button>
+              </div>
+              <div id="webcamStatus" style="font-size: 12px; color: var(--text-secondary);">Point OMR sheet at camera to scan</div>
             </div>
 
             <!-- Batch Progress Bar Section -->
@@ -734,6 +753,7 @@
   <script>
     // ── State ─────────────────────────────────────────────
     const GATEWAY_URL = 'https://omrevaluation-2.onrender.com';
+    const WEBSOCKET_BACKEND_URL = 'wss://omrevaluation-backend.onrender.com'; // Configure this to your production FastAPI backend URL for live webcam scanning
     let selectedFile = null;
     let selectedFiles = [];
     let pendingCount = 0;
@@ -1714,6 +1734,150 @@
       
       closeConfirmModal();
     });
+
+    // ── Webcam & WebSocket Controller ─────────────────────
+    const tabUploadMode = document.getElementById('tabUploadMode');
+    const tabWebcamMode = document.getElementById('tabWebcamMode');
+    const uploadModeContainer = document.getElementById('uploadModeContainer');
+    const webcamModeContainer = document.getElementById('webcamModeContainer');
+    const webcamVideo = document.getElementById('webcamVideo');
+    const webcamCanvas = document.getElementById('webcamCanvas');
+    const startWebcamBtn = document.getElementById('startWebcamBtn');
+    const stopWebcamBtn = document.getElementById('stopWebcamBtn');
+    const webcamStatus = document.getElementById('webcamStatus');
+    
+    let localStream = null;
+    let ws = null;
+    let scanInterval = null;
+    let isScanning = false;
+    
+    // Tab switching
+    tabUploadMode.addEventListener('click', () => {
+      tabUploadMode.classList.add('active');
+      tabWebcamMode.classList.remove('active');
+      uploadModeContainer.style.display = 'block';
+      webcamModeContainer.style.display = 'none';
+      stopWebcam();
+    });
+    
+    tabWebcamMode.addEventListener('click', () => {
+      tabWebcamMode.classList.add('active');
+      tabUploadMode.classList.remove('active');
+      webcamModeContainer.style.display = 'block';
+      uploadModeContainer.style.display = 'none';
+    });
+    
+    startWebcamBtn.addEventListener('click', async () => {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: 640, height: 480 }
+        });
+        webcamVideo.srcObject = localStream;
+        startWebcamBtn.style.display = 'none';
+        stopWebcamBtn.style.display = 'inline-block';
+        webcamStatus.textContent = 'Connecting network tunnel...';
+        webcamStatus.style.color = 'var(--text-secondary)';
+        
+        // Initialize WebSocket
+        let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
+        ws = new WebSocket(wsUrl);
+        
+        ws.onopen = () => {
+          webcamStatus.textContent = 'Streaming live frames...';
+          webcamStatus.style.color = 'var(--green)';
+          startScanning();
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            resultData = data;
+            
+            // Render results onto page
+            renderResults(data);
+            
+            // Display annotated frame
+            if (data.annotated_image_b64) {
+              resultImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+              resultImage.style.display = '';
+              placeholder.style.display = 'none';
+            }
+          } catch (e) {
+            console.error("Error parsing websocket frame", e);
+          }
+        };
+        
+        ws.onerror = (err) => {
+          webcamStatus.textContent = '❌ Connection error.';
+          webcamStatus.style.color = 'var(--red)';
+        };
+        
+        ws.onclose = () => {
+          webcamStatus.textContent = 'Tunnel closed.';
+          webcamStatus.style.color = 'var(--text-muted)';
+          stopScanning();
+        };
+        
+      } catch (err) {
+        webcamStatus.textContent = `❌ Camera access failed: ${err.message}`;
+        webcamStatus.style.color = 'var(--red)';
+      }
+    });
+    
+    stopWebcamBtn.addEventListener('click', stopWebcam);
+    
+    function stopWebcam() {
+      stopScanning();
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      webcamVideo.srcObject = null;
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      startWebcamBtn.style.display = 'inline-block';
+      stopWebcamBtn.style.display = 'none';
+      webcamStatus.textContent = 'Point OMR sheet at camera to scan';
+      webcamStatus.style.color = 'var(--text-secondary)';
+    }
+    
+    function startScanning() {
+      if (isScanning) return;
+      isScanning = true;
+      const ctx = webcamCanvas.getContext('2d');
+      
+      scanInterval = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (webcamVideo.readyState < 2) return; // Wait until frame data is ready
+        
+        try {
+          // Draw video frame onto canvas
+          ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+          
+          // Convert to base64 jpeg
+          const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.6); // 60% quality compression
+          
+          // Send payload
+          const sessionId = sessionIdInput.value.trim() || 'default';
+          ws.send(JSON.stringify({
+            image: dataUrl,
+            session_id: sessionId
+          }));
+        } catch (err) {
+          console.error("Failed to capture/send webcam frame:", err);
+        }
+      }, 100); // 10 frames per second
+    }
+    
+    function stopScanning() {
+      isScanning = false;
+      if (scanInterval) {
+        clearInterval(scanInterval);
+        scanInterval = null;
+      }
+    }
 
     // Initial check on load
     fetchPendingCount();
