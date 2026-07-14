@@ -514,8 +514,50 @@
             </div>
 
             <!-- Live Webcam Mode -->
-            <div id="webcamModeContainer" style="display: none; text-align: center;">
-              <video id="webcamVideo" autoplay playsinline style="width: 100%; max-width: 600px; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0 auto 16px auto; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+            <div id="webcamModeContainer" style="display: none; text-align: center; position: relative; max-width: 600px; margin: 0 auto 16px auto;">
+              <video id="webcamVideo" autoplay playsinline style="width: 100%; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+              <img id="webcamRenderImage" style="width: 100%; height: auto; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
+              
+              <!-- Glassmorphic HUD overlay -->
+              <div id="webcamHudCard" style="display: none; position: absolute; top: 16px; right: 16px; width: 220px; padding: 14px; border-radius: 12px; background: rgba(17, 24, 39, 0.75); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 2px solid rgba(251, 191, 36, 0.4); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6); text-align: left; font-family: system-ui, -apple-system, sans-serif; color: #fff; z-index: 10; pointer-events: none; transition: all 0.3s ease;">
+                <!-- Header -->
+                <div style="font-weight: 700; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #fbbf24; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>OMR LIVE HUD</span>
+                  <span id="hudStatusBadge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold;">ACTIVE</span>
+                </div>
+                
+                <!-- Divider -->
+                <div style="height: 1px; background: rgba(255,255,255,0.15); margin-bottom: 10px;"></div>
+                
+                <!-- Stats -->
+                <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: rgba(255,255,255,0.6);">USN:</span>
+                    <span id="hudUsn" style="font-weight: 700; font-family: monospace; letter-spacing: 0.5px; color: #e0f2fe;">UNKNOWN</span>
+                  </div>
+                  
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin: 2px 0;">
+                    <span style="color: rgba(255,255,255,0.6);">Score:</span>
+                    <span id="hudScore" style="font-size: 22px; font-weight: 800; color: #4ade80;">0.0%</span>
+                  </div>
+                  
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: rgba(255,255,255,0.6);">Correct:</span>
+                    <span id="hudCorrect" style="font-weight: 600; color: #4ade80;">0 / 0</span>
+                  </div>
+                  
+                  <div style="display: flex; justify-content: space-between;">
+                    <span style="color: rgba(255,255,255,0.6);">Incorrect:</span>
+                    <span id="hudIncorrect" style="font-weight: 600; color: #f87171;">0</span>
+                  </div>
+                  
+                  <!-- Review Badge -->
+                  <div id="hudReviewStatus" style="margin-top: 6px; font-size: 9px; font-weight: bold; text-align: center; padding: 4px; border-radius: 6px; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2);">
+                    REVIEW REQUIRED
+                  </div>
+                </div>
+              </div>
+              
               <canvas id="webcamCanvas" width="640" height="480" style="display: none;"></canvas>
               <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 12px;">
                 <button class="btn btn-primary" id="startWebcamBtn" style="padding: 8px 16px; font-size: 13px; width: auto;">Start Camera</button>
@@ -1743,15 +1785,25 @@
     const uploadModeContainer = document.getElementById('uploadModeContainer');
     const webcamModeContainer = document.getElementById('webcamModeContainer');
     const webcamVideo = document.getElementById('webcamVideo');
+    const webcamRenderImage = document.getElementById('webcamRenderImage');
     const webcamCanvas = document.getElementById('webcamCanvas');
     const startWebcamBtn = document.getElementById('startWebcamBtn');
     const stopWebcamBtn = document.getElementById('stopWebcamBtn');
     const webcamStatus = document.getElementById('webcamStatus');
     
+    // HUD overlay selectors
+    const webcamHudCard = document.getElementById('webcamHudCard');
+    const hudUsn = document.getElementById('hudUsn');
+    const hudScore = document.getElementById('hudScore');
+    const hudCorrect = document.getElementById('hudCorrect');
+    const hudIncorrect = document.getElementById('hudIncorrect');
+    const hudReviewStatus = document.getElementById('hudReviewStatus');
+    
     let localStream = null;
     let ws = null;
     let scanInterval = null;
     let isScanning = false;
+    let lastAlignedTime = 0;
     
     // Tab switching
     tabUploadMode.addEventListener('click', () => {
@@ -1791,21 +1843,80 @@
         };
         
         ws.onmessage = (event) => {
+          isProcessingFrame = false;
           try {
             const data = JSON.parse(event.data);
             resultData = data;
             
-            // Render results onto page
-            renderResults(data);
+            // Visual feedback for alignment
+            if (data.aligned === false) {
+              webcamStatus.textContent = '⏳ ' + (data.message || 'Aligning OMR sheet...');
+              webcamStatus.style.color = '#e6a23c'; // Warning yellow
+              
+              // Only fall back to raw feed if we haven't seen a successful alignment in the last 3 seconds
+              if (Date.now() - lastAlignedTime > 3000) {
+                webcamRenderImage.style.display = 'none';
+                webcamVideo.style.display = 'block';
+                webcamHudCard.style.display = 'none';
+              }
+            } else {
+              // Update last alignment timestamp
+              lastAlignedTime = Date.now();
+              
+              webcamStatus.textContent = '🟢 OMR Sheet Aligned & Evaluating';
+              webcamStatus.style.color = 'var(--green)';
+              
+              // Only render results if aligned is true
+              renderResults(data);
+              
+              // Show annotated frame with score directly in the camera slot (do not display in pipeline visualization below)
+              if (data.annotated_image_b64) {
+                webcamVideo.style.display = 'none';
+                webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+                webcamRenderImage.style.display = 'block';
+              } else {
+                webcamRenderImage.style.display = 'none';
+                webcamVideo.style.display = 'block';
+              }
+              
+              // Update HUD card values dynamically
+              if (data.score_report) {
+                hudUsn.textContent = data.usn || 'UNKNOWN';
+                hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+                hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+                hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+                hudIncorrect.textContent = data.score_report.incorrect;
+                
+                const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+                if (hasReview) {
+                  hudReviewStatus.textContent = '⚠️ REVIEW REQUIRED';
+                  hudReviewStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+                  hudReviewStatus.style.color = '#f87171';
+                  hudReviewStatus.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+                  webcamHudCard.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                } else {
+                  hudReviewStatus.textContent = '🟢 STATUS: OK';
+                  hudReviewStatus.style.background = 'rgba(34, 197, 94, 0.15)';
+                  hudReviewStatus.style.color = '#4ade80';
+                  hudReviewStatus.style.borderColor = 'rgba(34, 197, 94, 0.2)';
+                  webcamHudCard.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+                }
+                
+                webcamHudCard.style.display = 'block';
+              } else {
+                webcamHudCard.style.display = 'none';
+              }
+            }
             
-            // Display annotated frame
-            if (data.annotated_image_b64) {
-              resultImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-              resultImage.style.display = '';
-              placeholder.style.display = 'none';
+            // Queue next frame capture
+            if (isScanning) {
+              setTimeout(sendNextFrame, 40); // 40ms delay (~25 FPS limit)
             }
           } catch (e) {
             console.error("Error parsing websocket frame", e);
+            if (isScanning) {
+              setTimeout(sendNextFrame, 100);
+            }
           }
         };
         
@@ -1834,7 +1945,12 @@
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
       }
+      lastAlignedTime = 0;
+      webcamRenderImage.style.display = 'none';
+      webcamRenderImage.src = '';
+      webcamVideo.style.display = 'block';
       webcamVideo.srcObject = null;
+      webcamHudCard.style.display = 'none';
       if (ws) {
         ws.close();
         ws = null;
@@ -1845,40 +1961,44 @@
       webcamStatus.style.color = 'var(--text-secondary)';
     }
     
+    let isProcessingFrame = false;
+    
     function startScanning() {
       if (isScanning) return;
       isScanning = true;
-      const ctx = webcamCanvas.getContext('2d');
-      
-      scanInterval = setInterval(() => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        if (webcamVideo.readyState < 2) return; // Wait until frame data is ready
-        
-        try {
-          // Draw video frame onto canvas
-          ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
-          
-          // Convert to base64 jpeg
-          const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.6); // 60% quality compression
-          
-          // Send payload
-          const sessionId = sessionIdInput.value.trim() || 'default';
-          ws.send(JSON.stringify({
-            image: dataUrl,
-            session_id: sessionId
-          }));
-        } catch (err) {
-          console.error("Failed to capture/send webcam frame:", err);
-        }
-      }, 100); // 10 frames per second
+      isProcessingFrame = false;
+      sendNextFrame();
+    }
+    
+    function sendNextFrame() {
+      if (!isScanning || !ws || ws.readyState !== WebSocket.OPEN) return;
+      if (webcamVideo.readyState < 2) {
+        // Wait for video frame to be ready
+        requestAnimationFrame(sendNextFrame);
+        return;
+      }
+      if (isProcessingFrame) return;
+
+      isProcessingFrame = true;
+      try {
+        const ctx = webcamCanvas.getContext('2d');
+        ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+        const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.5); // 50% compression to speed up transfer
+        const sessionId = sessionIdInput.value.trim() || 'default';
+        ws.send(JSON.stringify({
+          image: dataUrl,
+          session_id: sessionId
+        }));
+      } catch (err) {
+        console.error("Failed to capture/send webcam frame:", err);
+        isProcessingFrame = false;
+        setTimeout(sendNextFrame, 200); // Retry after delay
+      }
     }
     
     function stopScanning() {
       isScanning = false;
-      if (scanInterval) {
-        clearInterval(scanInterval);
-        scanInterval = null;
-      }
+      isProcessingFrame = false;
     }
 
     // Initial check on load

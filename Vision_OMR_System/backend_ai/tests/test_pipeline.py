@@ -209,7 +209,7 @@ class TestScoring:
         answer_key = {1: "B", 2: "C"}
 
         # Q1: row at y=50, B is filled (x=40..60)
-        # Q2: row at y=150, C is filled (x=70..90)
+        # Q2: row at y=100, C is filled (x=70..90)
         crs = [
             # Q1 options
             self._make_cr(10, 50, 30, 70, "empty"),
@@ -217,10 +217,10 @@ class TestScoring:
             self._make_cr(70, 50, 90, 70, "empty"),
             self._make_cr(100, 50, 120, 70, "empty"),
             # Q2 options
-            self._make_cr(10, 150, 30, 170, "empty"),
-            self._make_cr(40, 150, 60, 170, "empty"),
-            self._make_cr(70, 150, 90, 170, "filled"),
-            self._make_cr(100, 150, 120, 170, "empty"),
+            self._make_cr(10, 100, 30, 120, "empty"),
+            self._make_cr(40, 100, 60, 120, "empty"),
+            self._make_cr(70, 100, 90, 120, "filled"),
+            self._make_cr(100, 100, 120, 120, "empty"),
         ]
 
         report = score_sheet(crs, answer_key, layout)

@@ -96,6 +96,7 @@ def classify_bubble(
     
     mask_indices = mask > 0
     mean_inner = float(np.mean(gray[mask_indices])) if np.any(mask_indices) else 255.0
+    std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
     
     # Calculate local paper reference using the outer margin of the 64x64 ROI
     cx, cy = 32.0, 32.0
@@ -106,12 +107,20 @@ def classify_bubble(
     contrast_diff = local_paper - mean_inner
     ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
     
-    if contrast_diff >= 32.0 and ratio >= 0.15:
+    if mean_inner < 50.0 and local_paper < 50.0:
         state = BubbleState.FILLED
-    elif contrast_diff <= 20.0 or ratio <= 0.09:
+    elif contrast_diff >= 100.0 and ratio >= 0.60 and std_inner < 15.0:
+        state = BubbleState.FILLED
+    elif contrast_diff <= 90.0 or ratio <= 0.50:
         state = BubbleState.EMPTY
     else:
-        state = BubbleState.AMBIGUOUS
+        # Fallback to YOLO
+        if detection.class_name == "unfilled" and detection.confidence > 0.75:
+            state = BubbleState.EMPTY
+        elif detection.class_name == "filled" and detection.confidence > 0.80:
+            state = BubbleState.FILLED
+        else:
+            state = BubbleState.AMBIGUOUS
         
     return ClassificationResult(detection, state, 0.0)
 
@@ -149,12 +158,11 @@ def classify_all(
         contrast_diff = local_paper - mean_inner
         ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
         
-        if contrast_diff >= 32.0 and ratio >= 0.15:
-            if std_inner < 28.0:
-                state = BubbleState.FILLED
-            else:
-                state = BubbleState.AMBIGUOUS
-        elif contrast_diff <= 20.0 or ratio <= 0.09:
+        if mean_inner < 50.0 and local_paper < 50.0:
+            state = BubbleState.FILLED
+        elif contrast_diff >= 100.0 and ratio >= 0.60 and std_inner < 15.0:
+            state = BubbleState.FILLED
+        elif contrast_diff <= 90.0 or ratio <= 0.50:
             state = BubbleState.EMPTY
         else:
             # Ambiguous zone: verify with YOLO model's confidence

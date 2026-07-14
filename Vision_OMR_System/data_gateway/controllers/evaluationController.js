@@ -45,7 +45,7 @@ export async function evaluateSheet(req, res) {
 
     const { data } = await axios.post(`${FASTAPI_URL}/evaluate`, form, {
       headers: form.getHeaders(),
-      timeout: 25_000, // 25 s
+      timeout: 45_000, // 45 s
       maxBodyLength: Infinity,
     });
 
@@ -250,7 +250,7 @@ export async function proxyDebugEvaluate(req, res) {
     });
     const { data } = await axios.post(`${FASTAPI_URL}/debug/evaluate`, form, {
       headers: form.getHeaders(),
-      timeout: 25_000,
+      timeout: 45_000,
       maxBodyLength: Infinity,
     });
     return res.json(data);

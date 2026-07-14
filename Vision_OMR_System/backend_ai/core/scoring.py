@@ -182,7 +182,7 @@ def map_bubbles_to_grid(
         row_blocks.append(current_block)
         
         # Keep the largest block (the OMR bubble grid)
-        best_block = max(row_blocks, key=len)
+        best_block: List[List[Tuple[float, float, ClassificationResult]]] = max(row_blocks, key=len)
         
         # Trim to layout max expected rows in case of extra bottom rows
         if len(best_block) > layout.questions_per_column:

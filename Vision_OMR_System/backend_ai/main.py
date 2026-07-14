@@ -28,7 +28,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.preprocess import preprocess_image
+from core.preprocess import preprocess_image, preprocess_image_detect
 from core.localization import run_yolo_inference
 from core.classification import classify_all, BubbleState
 from core import extract_usn_from_roi
@@ -214,7 +214,7 @@ async def evaluate_batch(
 
         # 2. Process Each Page
         batch_results = []
-        answer_key = _answer_keys.get(session_id)
+        answer_key = _answer_keys.get(session_id or "default")
         layout = SheetLayout(
             questions_per_column=questions_per_column,
             num_columns=num_columns,
@@ -733,7 +733,7 @@ def _annotate_image(
 def _img_to_base64(image: np.ndarray) -> str:
     """Encode a BGR image as base64 JPEG string."""
     _, buffer = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 90])
-    return base64.b64encode(buffer).decode("utf-8")
+    return base64.b64encode(buffer.tobytes()).decode("utf-8")
 
 
 class DebugResponse(BaseModel):
@@ -937,6 +937,7 @@ import base64
 async def websocket_evaluate(websocket: WebSocket):
     await websocket.accept()
     print("[WebSocket] Client connected")
+    last_valid_usn = None
     try:
         while True:
             # Receive frame data (base64 string inside json)
@@ -954,11 +955,26 @@ async def websocket_evaluate(websocket: WebSocket):
                 img_b64 = img_b64.split(",")[1]
             img_bytes = base64.b64decode(img_b64)
             
-            # Preprocess
+            # Preprocess and check alignment
             try:
-                clean_img = preprocess_image(img_bytes)
+                clean_img, aligned = preprocess_image_detect(img_bytes)
             except Exception as e:
                 print(f"[WebSocket Preprocess Error] {e}")
+                continue
+                
+            if not aligned:
+                response = {
+                    "aligned": False,
+                    "usn": "ALIGNING",
+                    "filled_count": 0,
+                    "empty_count": 0,
+                    "ambiguous_count": 0,
+                    "needs_manual_review": False,
+                    "bubbles": [],
+                    "annotated_image_b64": None,
+                    "message": "Aligning OMR sheet..."
+                }
+                await websocket.send_text(json.dumps(response))
                 continue
                 
             # Localize
@@ -970,7 +986,12 @@ async def websocket_evaluate(websocket: WebSocket):
             usn_value = None
             if usn_dets:
                 det = usn_dets[0]
-                usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+                if last_valid_usn and last_valid_usn != "UNKNOWN":
+                    usn_value = last_valid_usn
+                else:
+                    usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+                    if usn_value and usn_value != "UNKNOWN":
+                        last_valid_usn = usn_value
                 
             # Classify
             classifications = classify_all(clean_img, bubble_dets)
@@ -995,7 +1016,7 @@ async def websocket_evaluate(websocket: WebSocket):
                 cv2.rectangle(annotated_img, (int(det.x1), int(det.y1)), (int(det.x2), int(det.y2)), (255, 0, 0), 2)
                 if usn_value:
                     cv2.putText(annotated_img, f"USN: {usn_value}", (int(det.x1), int(det.y1) - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                    
+            
             # Encode annotated image back to base64 jpeg
             _, buffer = cv2.imencode(".jpg", annotated_img)
             annotated_b64 = base64.b64encode(buffer).decode("utf-8")
@@ -1026,6 +1047,7 @@ async def websocket_evaluate(websocket: WebSocket):
                 }
                 
             response = {
+                "aligned": True,
                 "usn": usn_value or "UNKNOWN",
                 "filled_count": filled,
                 "empty_count": empty,
@@ -1041,7 +1063,8 @@ async def websocket_evaluate(websocket: WebSocket):
                         "needs_review": c.state == BubbleState.AMBIGUOUS
                     } for idx, c in enumerate(classifications)
                 ],
-                "annotated_image_b64": annotated_b64
+                "annotated_image_b64": annotated_b64,
+                "message": "Evaluation successful"
             }
             
             await websocket.send_text(json.dumps(response))

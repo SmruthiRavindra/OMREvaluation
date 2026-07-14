@@ -352,48 +352,17 @@ def extract_usn_from_roi(
     else:
         gray = roi.copy()
 
-    # ── 3. Optimized 2-stage OCR: Run fast 2.0 CLAHE first, fallback to 3.0 only if needed ──
-    candidates: List[Tuple[str, str, float, str]] = []
-
-    # Stage 1: Fast Pass (2.0 scale)
+    # ── 3. Optimized Single-Stage OCR (scale 2.0 with CLAHE & adaptive threshold) ──
     try:
         processed = _preprocess_for_ocr(gray, scale=2.0, method="clahe")
         raw_text = _run_easyocr_on_image(processed)
         if raw_text:
             corrected = correct_usn_format(raw_text)
             if corrected != "UNKNOWN":
-                # Fast path exit: starts with 4VV and plausible VTU length (9-11 chars)
-                if corrected.startswith("4VV") and 9 <= len(corrected) <= 11:
-                    print(f"[USN EasyOCR Fast-Path] '{corrected}' (raw='{raw_text}', scale=2.0, clahe)")
-                    return corrected
-                candidates.append((corrected, raw_text, 2.0, "clahe"))
+                print(f"[USN EasyOCR] '{corrected}' (raw='{raw_text}', scale=2.0)")
+                return corrected
     except Exception as exc:
-        print(f"[USN EasyOCR Error] Stage 1 (scale=2.0, clahe): {exc}")
+        print(f"[USN EasyOCR Error] {exc}")
 
-    # Stage 2: Fallback Pass (3.0 scale) - Only executed if Stage 1 didn't find a valid USN
-    if not candidates or not any(c[0].startswith("4VV") for c in candidates):
-        try:
-            processed = _preprocess_for_ocr(gray, scale=3.0, method="clahe")
-            raw_text = _run_easyocr_on_image(processed)
-            if raw_text:
-                corrected = correct_usn_format(raw_text)
-                if corrected != "UNKNOWN":
-                    if corrected.startswith("4VV") and 9 <= len(corrected) <= 11:
-                        print(f"[USN EasyOCR Fast-Path Fallback] '{corrected}' (raw='{raw_text}', scale=3.0, clahe)")
-                        return corrected
-                    candidates.append((corrected, raw_text, 3.0, "clahe"))
-        except Exception as exc:
-            print(f"[USN EasyOCR Error] Stage 2 (scale=3.0, clahe): {exc}")
-
-    # ── 4. Rank candidates ───────────────────────────────────────────────
-    if candidates:
-        candidates.sort(key=lambda c: (
-            0 if c[0].startswith("4VV") else 1,   # prefer 4VV prefix
-            abs(len(c[0]) - 10),                   # prefer length ≈ 10
-        ))
-        best = candidates[0]
-        print(f"[USN EasyOCR Consensus] Best: '{best[0]}' (raw='{best[1]}', scale={best[2]}, {best[3]})")
-        return best[0]
-
-    print("[USN EasyOCR] No valid USN found among candidates")
+    print("[USN EasyOCR] No valid USN extracted")
     return "UNKNOWN"

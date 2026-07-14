@@ -179,3 +179,39 @@ def _perspective_warp(
     if gray_warped.std() < 18.0:
         return img
     return warped
+
+
+def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool]:
+    """
+    Full pre-processing pipeline returning both the cleaned image and a boolean
+    indicating whether the sheet was successfully aligned (perspective warped).
+    """
+    img = _decode(image_bytes)
+    img = _ensure_min_resolution(img)
+    img = _enhance_contrast(img)
+    img = _bilateral_filter(img)
+    
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    edges = _canny_edges(gray)
+    
+    # Apply morphological closing to bridge gaps in Canny edges (e.g. from glares or shadows)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+    corners = _find_sheet_corners(edges_closed)
+
+    if corners is None:
+        return img, False
+
+    w, h = (800, 1100)
+    dst = np.array(
+        [[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32
+    )
+    M = cv2.getPerspectiveTransform(corners, dst)
+    warped = cv2.warpPerspective(img, M, (w, h))
+    
+    # Discard warp if it results in a low-contrast flat/solid color (desk mat, background)
+    gray_warped = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    if gray_warped.std() < 18.0:
+        return img, False
+        
+    return warped, True
