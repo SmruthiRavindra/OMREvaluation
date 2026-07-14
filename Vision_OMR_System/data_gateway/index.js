@@ -134,7 +134,12 @@ server.on('upgrade', (request, socket, head) => {
       }
       
       console.log(`[Gateway WS Proxy] Connecting to backend: ${targetWsUrl}`);
-      const backendWs = new WSClient(targetWsUrl);
+      const backendWs = new WSClient(targetWsUrl, {
+        headers: {
+          'user-agent': request.headers['user-agent'] || 'Mozilla/5.0',
+          'origin': request.headers['origin'] || 'https://smruthiravindra.github.io',
+        }
+      });
       
       backendWs.on('open', () => {
         console.log('[Gateway WS Proxy] Backend connection opened');
