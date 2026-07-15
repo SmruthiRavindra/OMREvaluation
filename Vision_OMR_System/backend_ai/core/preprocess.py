@@ -150,19 +150,59 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
     return rect
 
 
+def _find_sheet_corners_otsu(gray: np.ndarray) -> np.ndarray | None:
+    """
+    Detect OMR sheet corners using Otsu binarization.
+    Highly robust for bright sheets on darker/cluttered backgrounds.
+    """
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    
+    # Morphological closing to fill small gaps
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+    
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+        
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
+    h_f, w_f = gray.shape[:2]
+    total_area = h_f * w_f
+    min_area = total_area * 0.15 # Reduced slightly to support perspective tilts
+    
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area:
+            continue
+            
+        peri = cv2.arcLength(c, True)
+        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            pts = approx.reshape(4, 2).astype(np.float32)
+            return _order_points(pts)
+            
+    return None
+
+
 def _perspective_warp(
     img: np.ndarray,
     output_size: Tuple[int, int] = (800, 1100),
 ) -> np.ndarray:
     """
     Attempt homography-based perspective correction.
-
-    If the sheet boundary cannot be detected, returns the original image
-    (graceful degradation — YOLO is still invoked on the raw frame).
+    Tries robust Otsu-based contours first, falling back to Canny edges.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    edges = _canny_edges(gray)
-    corners = _find_sheet_corners(edges)
+    
+    # Try Otsu contour detection first
+    corners = _find_sheet_corners_otsu(gray)
+    
+    # Fallback to Canny edges
+    if corners is None:
+        edges = _canny_edges(gray)
+        corners = _find_sheet_corners(edges)
 
     if corners is None:
         return img  # graceful fall-through
@@ -174,7 +214,7 @@ def _perspective_warp(
     M = cv2.getPerspectiveTransform(corners, dst)
     warped = cv2.warpPerspective(img, M, (w, h))
     
-    # Discard warp if it results in a low-contrast flat/solid color (e.g. warping desk mat/background noise)
+    # Discard warp if it results in a low-contrast flat/solid color
     gray_warped = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
     if gray_warped.std() < 18.0:
         return img
@@ -192,12 +232,16 @@ def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool]:
     img = _bilateral_filter(img)
     
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    edges = _canny_edges(gray)
     
-    # Apply morphological closing to bridge gaps in Canny edges (e.g. from glares or shadows)
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
-    corners = _find_sheet_corners(edges_closed)
+    # Try Otsu binarization contour detection first
+    corners = _find_sheet_corners_otsu(gray)
+    
+    # Fallback to Canny edges
+    if corners is None:
+        edges = _canny_edges(gray)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+        edges_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+        corners = _find_sheet_corners(edges_closed)
 
     if corners is None:
         return img, False

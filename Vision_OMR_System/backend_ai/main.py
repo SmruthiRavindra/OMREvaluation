@@ -115,8 +115,18 @@ async def evaluate_sheet(file: UploadFile = File(...)):
         # ── 3. Localise: YOLOv8 + custom class-aware NMS ───────────────────
         detections = run_yolo_inference(clean_img)
 
-        # ── 4. Separate USN detections from bubble detections ───────────────
+        # Check for upside-down orientation using USN bounding box
         usn_detections = [d for d in detections if d.class_name == "usn"]
+        if usn_detections:
+            usn_det = usn_detections[0]
+            h_img = clean_img.shape[0]
+            usn_center_y = (usn_det.y1 + usn_det.y2) / 2
+            if usn_center_y > h_img / 2:
+                clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
+                detections = run_yolo_inference(clean_img)
+                usn_detections = [d for d in detections if d.class_name == "usn"]
+
+        # ── 4. Separate USN detections from bubble detections ───────────────
         bubble_detections = [d for d in detections if d.class_name != "usn"]
 
         # Extract USN region using OCR
@@ -782,7 +792,21 @@ async def debug_evaluate(
 
         # Localize
         detections = run_yolo_inference(clean_img)
+
+        # Check for upside-down orientation using USN bounding box
         usn_dets = [d for d in detections if d.class_name == "usn"]
+        if usn_dets:
+            usn_det = usn_dets[0]
+            h_img = clean_img.shape[0]
+            usn_center_y = (usn_det.y1 + usn_det.y2) / 2
+            if usn_center_y > h_img / 2:
+                clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
+                # Rotate original image too for correct display in debug
+                if orig_img is not None:
+                    orig_img = cv2.rotate(orig_img, cv2.ROTATE_180)
+                detections = run_yolo_inference(clean_img)
+                usn_dets = [d for d in detections if d.class_name == "usn"]
+
         bubble_dets = [d for d in detections if d.class_name != "usn"]
 
         # Extract USN
@@ -979,7 +1003,18 @@ async def websocket_evaluate(websocket: WebSocket):
                 
             # Localize
             detections = run_yolo_inference(clean_img)
+            
+            # Check for upside-down orientation using USN bounding box
             usn_dets = [d for d in detections if d.class_name == "usn"]
+            if usn_dets:
+                usn_det = usn_dets[0]
+                h_img = clean_img.shape[0]
+                usn_center_y = (usn_det.y1 + usn_det.y2) / 2
+                if usn_center_y > h_img / 2:
+                    clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
+                    detections = run_yolo_inference(clean_img)
+                    usn_dets = [d for d in detections if d.class_name == "usn"]
+                    
             bubble_dets = [d for d in detections if d.class_name != "usn"]
             
             # Extract USN
