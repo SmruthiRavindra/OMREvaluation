@@ -107,12 +107,21 @@ def classify_bubble(
     contrast_diff = local_paper - mean_inner
     ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
     
-    if contrast_diff >= 32.0 and ratio >= 0.15:
-        state = BubbleState.FILLED
-    elif contrast_diff <= 20.0 or ratio <= 0.09:
+    if contrast_diff >= 100.0 and ratio >= 0.60:
+        if std_inner < 15.0:
+            state = BubbleState.FILLED
+        else:
+            state = BubbleState.AMBIGUOUS
+    elif contrast_diff <= 90.0 or ratio <= 0.50:
         state = BubbleState.EMPTY
     else:
-        state = BubbleState.AMBIGUOUS
+        # Fallback to YOLO predictions
+        if detection.class_name == "unfilled" and detection.confidence > 0.75:
+            state = BubbleState.EMPTY
+        elif detection.class_name == "filled" and detection.confidence > 0.80:
+            state = BubbleState.FILLED
+        else:
+            state = BubbleState.AMBIGUOUS
         
     return ClassificationResult(detection, state, 0.0)
 
@@ -150,12 +159,12 @@ def classify_all(
         contrast_diff = local_paper - mean_inner
         ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
         
-        if contrast_diff >= 32.0 and ratio >= 0.15:
-            if std_inner < 28.0:
+        if contrast_diff >= 100.0 and ratio >= 0.60:
+            if std_inner < 15.0:
                 state = BubbleState.FILLED
             else:
                 state = BubbleState.AMBIGUOUS
-        elif contrast_diff <= 20.0 or ratio <= 0.09:
+        elif contrast_diff <= 90.0 or ratio <= 0.50:
             state = BubbleState.EMPTY
         else:
             # Ambiguous zone: verify with YOLO model's confidence
