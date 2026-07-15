@@ -62,8 +62,20 @@ export async function submitStudentResult(req, res) {
   try {
     const result = await query(
       `INSERT INTO student_results 
-        (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PRESENT', NOW())
+       ON CONFLICT (session_id, usn)
+       DO UPDATE SET
+         score = EXCLUDED.score,
+         total = EXCLUDED.total,
+         correct = EXCLUDED.correct,
+         incorrect = EXCLUDED.incorrect,
+         unanswered = EXCLUDED.unanswered,
+         multiple_marked = EXCLUDED.multiple_marked,
+         score_percent = EXCLUDED.score_percent,
+         per_question = EXCLUDED.per_question,
+         status = 'PRESENT',
+         created_at = NOW()
        RETURNING id`,
       [session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question)]
     );
@@ -104,7 +116,19 @@ export async function submitAbsentees(req, res) {
       await query(
         `INSERT INTO student_results 
           (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, status, created_at)
-         VALUES ($1, $2, 0, 0, 0, 0, 0, 0, 0.00, 'ABSENT', NOW())`,
+         VALUES ($1, $2, 0, 0, 0, 0, 0, 0, 0.00, 'ABSENT', NOW())
+         ON CONFLICT (session_id, usn)
+         DO UPDATE SET
+           score = 0,
+           total = 0,
+           correct = 0,
+           incorrect = 0,
+           unanswered = 0,
+           multiple_marked = 0,
+           score_percent = 0.00,
+           status = 'ABSENT',
+           per_question = NULL,
+           created_at = NOW()`,
         [session_id, usn.trim()]
       );
       savedCount++;

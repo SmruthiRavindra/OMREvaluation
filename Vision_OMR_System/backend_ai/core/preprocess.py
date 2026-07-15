@@ -120,7 +120,7 @@ def _find_sheet_corners(edges: np.ndarray) -> np.ndarray | None:
     
     h_f, w_f = edges.shape[:2]
     total_area = h_f * w_f
-    min_area = total_area * 0.08  # Sheet must occupy at least 8% of the frame
+    min_area = total_area * 0.55  # Sheet must occupy at least 55% of the frame to prevent warping small internal grids
     
     for c in contours:
         area = cv2.contourArea(c)
