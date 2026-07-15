@@ -35,6 +35,36 @@ export async function evaluateSheet(req, res) {
     return res.status(400).json({ error: 'No file uploaded. Use field name "file".' });
   }
 
+  const session_id = req.body?.session_id || 'default';
+  let roster = null;
+  let use_roster_order = false;
+  let assigned_usn = null;
+  try {
+    const sRes = await query("SELECT roster, use_roster_order FROM exam_sessions WHERE id = $1", [session_id]);
+    if (sRes.rows.length > 0) {
+      roster = sRes.rows[0].roster;
+      use_roster_order = sRes.rows[0].use_roster_order || false;
+    }
+
+    if (use_roster_order && roster) {
+      const rosterList = typeof roster === 'string' ? JSON.parse(roster) : roster;
+      if (Array.isArray(rosterList) && rosterList.length > 0) {
+        const absRes = await query("SELECT usn FROM student_results WHERE session_id = $1 AND status = 'ABSENT'", [session_id]);
+        const absentees = absRes.rows.map(r => r.usn);
+        const activeRoster = rosterList.filter(u => !absentees.includes(u));
+        
+        const countRes = await query("SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND status != 'ABSENT'", [session_id]);
+        const savedCount = parseInt(countRes.rows[0]?.count || 0);
+        
+        if (savedCount < activeRoster.length) {
+          assigned_usn = activeRoster[savedCount];
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('[evaluateSheet] Failed to fetch roster:', e.message);
+  }
+
   try {
     // Build a FormData payload to forward to FastAPI
     const form = new FormData();
@@ -42,6 +72,13 @@ export async function evaluateSheet(req, res) {
       filename:    req.file.originalname || 'sheet.jpg',
       contentType: req.file.mimetype,
     });
+    form.append('session_id', session_id);
+    if (roster) {
+      form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
+    }
+    if (assigned_usn) {
+      form.append('assigned_usn', assigned_usn);
+    }
 
     const { data } = await axios.post(`${FASTAPI_URL}/evaluate`, form, {
       headers: form.getHeaders(),
@@ -169,7 +206,42 @@ export async function evaluateBatchV1(req, res) {
       });
     }
 
-    form.append('session_id', req.body.session_id || 'default');
+    const session_id = req.body.session_id || 'default';
+    let roster = null;
+    let use_roster_order = false;
+    let assigned_usns = null;
+    try {
+      const sRes = await query("SELECT roster, use_roster_order FROM exam_sessions WHERE id = $1", [session_id]);
+      if (sRes.rows.length > 0) {
+        roster = sRes.rows[0].roster;
+        use_roster_order = sRes.rows[0].use_roster_order || false;
+      }
+
+      if (use_roster_order && roster) {
+        const rosterList = typeof roster === 'string' ? JSON.parse(roster) : roster;
+        if (Array.isArray(rosterList) && rosterList.length > 0) {
+          const absRes = await query("SELECT usn FROM student_results WHERE session_id = $1 AND status = 'ABSENT'", [session_id]);
+          const absentees = absRes.rows.map(r => r.usn);
+          const activeRoster = rosterList.filter(u => !absentees.includes(u));
+          
+          const countRes = await query("SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND status != 'ABSENT'", [session_id]);
+          const savedCount = parseInt(countRes.rows[0]?.count || 0);
+          
+          const sliceUsns = activeRoster.slice(savedCount);
+          assigned_usns = sliceUsns;
+        }
+      }
+    } catch(e) {
+      console.warn('[evaluateBatchV1] Failed to fetch roster:', e.message);
+    }
+
+    form.append('session_id', session_id);
+    if (roster) {
+      form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
+    }
+    if (assigned_usns) {
+      form.append('assigned_usns', JSON.stringify(assigned_usns));
+    }
     form.append('questions_per_column', req.body.questions_per_column || '15');
     form.append('num_columns', req.body.num_columns || '2');
     form.append('options', req.body.options || 'ABCD');
@@ -242,12 +314,51 @@ export async function proxyDebugEvaluate(req, res) {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded. Use field name "file".' });
   }
+  
+  const session_id = req.body?.session_id || 'default';
+  let roster = null;
+  let use_roster_order = false;
+  let assigned_usn = null;
+  try {
+    const sRes = await query("SELECT roster, use_roster_order FROM exam_sessions WHERE id = $1", [session_id]);
+    if (sRes.rows.length > 0) {
+      roster = sRes.rows[0].roster;
+      use_roster_order = sRes.rows[0].use_roster_order || false;
+    }
+
+    if (use_roster_order && roster) {
+      const rosterList = typeof roster === 'string' ? JSON.parse(roster) : roster;
+      if (Array.isArray(rosterList) && rosterList.length > 0) {
+        const absRes = await query("SELECT usn FROM student_results WHERE session_id = $1 AND status = 'ABSENT'", [session_id]);
+        const absentees = absRes.rows.map(r => r.usn);
+        const activeRoster = rosterList.filter(u => !absentees.includes(u));
+        
+        const countRes = await query("SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND status != 'ABSENT'", [session_id]);
+        const savedCount = parseInt(countRes.rows[0]?.count || 0);
+        
+        if (savedCount < activeRoster.length) {
+          assigned_usn = activeRoster[savedCount];
+        }
+      }
+    }
+  } catch(e) {
+    console.warn('[proxyDebugEvaluate] Failed to fetch roster:', e.message);
+  }
+
   try {
     const form = new FormData();
     form.append('file', req.file.buffer, {
       filename: req.file.originalname || 'sheet.jpg',
       contentType: req.file.mimetype,
     });
+    form.append('session_id', session_id);
+    if (roster) {
+      form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
+    }
+    if (assigned_usn) {
+      form.append('assigned_usn', assigned_usn);
+    }
+
     const { data } = await axios.post(`${FASTAPI_URL}/debug/evaluate`, form, {
       headers: form.getHeaders(),
       timeout: 45_000,

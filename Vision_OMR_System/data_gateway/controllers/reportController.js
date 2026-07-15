@@ -17,7 +17,7 @@ import PDFDocument from 'pdfkit';
 // ── Session Management ─────────────────────────────────────────────────────
 
 export async function createSession(req, res) {
-  const { id, subject, section, exam_date, total_questions } = req.body;
+  const { id, subject, section, exam_date, total_questions, roster, use_roster_order } = req.body;
 
   if (!id || !subject) {
     return res.status(400).json({ error: 'Missing required fields: id, subject' });
@@ -25,17 +25,29 @@ export async function createSession(req, res) {
 
   try {
     await query(
-      `INSERT INTO exam_sessions (id, subject, section, exam_date, total_questions, expected_students, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [id, subject, section || null, exam_date || new Date(), total_questions || 30, req.body.expected_students || 0]
+      `INSERT INTO exam_sessions (id, subject, section, exam_date, total_questions, expected_students, roster, use_roster_order, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         subject = EXCLUDED.subject,
+         section = EXCLUDED.section,
+         expected_students = EXCLUDED.expected_students,
+         roster = EXCLUDED.roster,
+         use_roster_order = EXCLUDED.use_roster_order`,
+      [
+        id,
+        subject,
+        section || null,
+        exam_date || new Date(),
+        total_questions || 30,
+        req.body.expected_students || 0,
+        JSON.stringify(roster || []),
+        use_roster_order || false
+      ]
     );
-    return res.status(201).json({ message: 'Session created successfully', id });
+    return res.status(201).json({ message: 'Session initialized/updated successfully', id });
   } catch (err) {
     console.error('[createSession] error:', err.message);
-    if (err.code === '23505') { // unique_violation
-      return res.status(409).json({ error: 'Session ID already exists' });
-    }
-    return res.status(500).json({ error: 'Failed to create session' });
+    return res.status(500).json({ error: 'Failed to initialize session' });
   }
 }
 

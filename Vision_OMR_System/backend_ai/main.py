@@ -91,8 +91,47 @@ async def health():
     return {"status": "ok", "service": "backend-ai"}
 
 
+def levenshtein_distance(s1: str, s2: str) -> int:
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+def match_usn_against_roster(ocr_usn: str, roster_list: List[str]) -> str:
+    if not ocr_usn or not roster_list:
+        return ocr_usn
+    clean_ocr = ocr_usn.strip().upper()
+    best_match = None
+    min_dist = 9999
+    for registered_usn in roster_list:
+        clean_reg = registered_usn.strip().upper()
+        if clean_ocr == clean_reg:
+            return registered_usn
+        dist = levenshtein_distance(clean_ocr, clean_reg)
+        if dist < min_dist:
+            min_dist = dist
+            best_match = registered_usn
+    if best_match and min_dist <= 5:
+        return best_match
+    return ocr_usn
+
 @app.post("/evaluate", response_model=EvaluationResponse)
-async def evaluate_sheet(file: UploadFile = File(...)):
+async def evaluate_sheet(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form("default"),
+    roster: Optional[str] = Form(None),
+    assigned_usn: Optional[str] = Form(None)
+):
     """
     Run the full OMR evaluation pipeline on an uploaded sheet image.
     """
@@ -105,6 +144,8 @@ async def evaluate_sheet(file: UploadFile = File(...)):
 
     try:
         t_start = time.perf_counter()
+        import json
+        roster_list = json.loads(roster) if roster else []
 
         # ── 1. Read raw bytes ───────────────────────────────────────────────
         contents = await file.read()
@@ -130,10 +171,12 @@ async def evaluate_sheet(file: UploadFile = File(...)):
         bubble_detections = [d for d in detections if d.class_name != "usn"]
 
         # Extract USN region using OCR
-        usn_value = None
-        if usn_detections:
+        usn_value = assigned_usn
+        if not usn_value and usn_detections:
             det = usn_detections[0]
             usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+            if usn_value and roster_list:
+                usn_value = match_usn_against_roster(usn_value, roster_list)
 
 
         # ── 5. Classify: secondary pixel-ratio verification ─────────────────
@@ -310,7 +353,9 @@ def run_batch_evaluation_sync(
     session_id: str,
     questions_per_column: int,
     num_columns: int,
-    options: str
+    options: str,
+    roster_list: List[str] = None,
+    assigned_usns: List[str] = None
 ):
     try:
         answer_key = _answer_keys.get(session_id)
@@ -351,9 +396,13 @@ def run_batch_evaluation_sync(
             bubble_dets = [d for d in detections if d.class_name != "usn"]
             
             usn_value = None
-            if usn_dets:
+            if assigned_usns and idx < len(assigned_usns):
+                usn_value = assigned_usns[idx]
+            elif usn_dets:
                 d = usn_dets[0]
                 usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
+                if usn_value and roster_list:
+                    usn_value = match_usn_against_roster(usn_value, roster_list)
                 
             classifications = classify_all(clean_img, bubble_dets)
             
@@ -447,7 +496,9 @@ async def run_batch_evaluation_async(
     session_id: str,
     questions_per_column: int,
     num_columns: int,
-    options: str
+    options: str,
+    roster_list: List[str] = None,
+    assigned_usns: List[str] = None
 ):
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(
@@ -458,7 +509,9 @@ async def run_batch_evaluation_async(
         session_id,
         questions_per_column,
         num_columns,
-        options
+        options,
+        roster_list,
+        assigned_usns
     )
 
 
@@ -469,7 +522,9 @@ async def batch_evaluate_async(
     session_id: str = Form("default"),
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
-    options: str = Form("ABCD")
+    options: str = Form("ABCD"),
+    roster: Optional[str] = Form(None),
+    assigned_usns: Optional[str] = Form(None)
 ):
     files_data = []
     for file in files:
@@ -486,6 +541,10 @@ async def batch_evaluate_async(
             "total": len(files_data),
             "results": []
         }
+
+    import json
+    roster_list = json.loads(roster) if roster else []
+    assigned_usns_list = json.loads(assigned_usns) if assigned_usns else None
         
     background_tasks.add_task(
         run_batch_evaluation_async,
@@ -494,7 +553,9 @@ async def batch_evaluate_async(
         session_id,
         questions_per_column,
         num_columns,
-        options
+        options,
+        roster_list,
+        assigned_usns_list
     )
     
     return BatchEvaluationStartResponse(
@@ -799,7 +860,8 @@ async def debug_evaluate(
     session_id: Optional[str] = Form("default"),
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
-    options: str = Form("ABCD")
+    options: str = Form("ABCD"),
+    roster: Optional[str] = Form(None)
 ):
     """
     Debug endpoint: runs the full pipeline and returns annotated images
@@ -810,6 +872,8 @@ async def debug_evaluate(
 
     try:
         t_start = time.perf_counter()
+        import json
+        roster_list = json.loads(roster) if roster else []
         contents = await file.read()
 
         # Decode original
@@ -843,6 +907,8 @@ async def debug_evaluate(
         if usn_dets:
             det = usn_dets[0]
             usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+            if usn_value and roster_list:
+                usn_value = match_usn_against_roster(usn_value, roster_list)
 
         # Classify
         classifications = classify_all(clean_img, bubble_dets)

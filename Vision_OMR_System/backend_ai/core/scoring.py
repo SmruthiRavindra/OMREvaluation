@@ -138,12 +138,19 @@ def map_bubbles_to_grid(
     if layout.num_columns == 1:
         col_blocks = [items]
     else:
-        # Divide into N roughly equal groups by x-position
-        block_size = len(items) // layout.num_columns
-        for i in range(layout.num_columns):
-            start = i * block_size
-            end = start + block_size if i < layout.num_columns - 1 else len(items)
-            col_blocks.append(items[start:end])
+        # Spatial-based split (robust against missing detections or noise)
+        x_min = min(t[0] for t in items)
+        x_max = max(t[0] for t in items)
+        width = x_max - x_min
+        col_width = width / layout.num_columns
+        
+        col_blocks = [[] for _ in range(layout.num_columns)]
+        for item in items:
+            cx = item[0]
+            col_idx = int((cx - x_min) / col_width)
+            col_idx = max(0, min(col_idx, layout.num_columns - 1))
+            col_blocks[col_idx].append(item)
+
 
     # ── Within each column, sort by y → split into question rows ────────
     grid: Dict[int, Dict[str, ClassificationResult]] = {}

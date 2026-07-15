@@ -495,9 +495,19 @@
               <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
           </div>
-          <div style="margin-bottom: 12px;">
-             <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
-             <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
+              <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Student Roster (Registered USNs, Comma Separated)</label>
+              <textarea id="rosterUsnsInput" placeholder="e.g. 4VV23CS101, 4VV23CS102, 4VV23CS205" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+              <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="useRosterOrderCheckbox" style="width: auto; cursor: pointer; margin: 0;">
+                <label for="useRosterOrderCheckbox" style="font-size: 11px; color: var(--text-secondary); cursor: pointer; font-weight: 600; margin: 0; user-select: none;">Match by Scan Order (Disable USN OCR)</label>
+              </div>
+            </div>
           </div>
           <button class="btn btn-primary" id="initSessionBtn" style="background: linear-gradient(135deg, var(--accent), #8b5cf6);">
             🚀 Initialize Session
@@ -1800,9 +1810,12 @@
     document.getElementById('initSessionBtn').addEventListener('click', async () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
       const absenteesStr = document.getElementById('absentUsnsInput').value;
+      const rosterStr = document.getElementById('rosterUsnsInput').value;
+      const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
       const statusEl = document.getElementById('initSessionStatus');
       
-      const usns = absenteesStr.split(',').map(s => s.trim()).filter(Boolean);
+      const usns = absenteesStr.split(/[\n,\t\r]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+      const roster = rosterStr.split(/[\n,\t\r]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
       const expectedStudents = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
       
       if (expectedStudents <= 0) {
@@ -1816,23 +1829,21 @@
         const subject = document.getElementById('subjectInput').value.trim() || 'Evaluation Session';
         const section = document.getElementById('sectionInput').value.trim() || '';
         
-        // Ensure session exists
-        try {
-          const checkResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`);
-          if (checkResp.status === 404) {
-            await fetch(`${GATEWAY_URL}/api/sessions`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                id: sessionId, 
-                subject: subject,
-                section: section,
-                total_questions: 30, // Fallback if no result was uploaded yet
-                expected_students: expectedStudents
-              })
-            });
-          }
-        } catch (e) { console.warn(e); }
+        // Initialize/Update session (UPSERT)
+        const sessionResp = await fetch(`${GATEWAY_URL}/api/sessions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            id: sessionId, 
+            subject: subject,
+            section: section,
+            total_questions: 30, // Fallback if no result was uploaded yet
+            expected_students: expectedStudents,
+            roster: roster,
+            use_roster_order: useRosterOrder
+          })
+        });
+        if (!sessionResp.ok) throw new Error('Failed to initialize session database configuration');
 
         // Submit absentees if any
         if (usns.length > 0) {
@@ -1861,6 +1872,8 @@
         document.getElementById('sectionInput').disabled = true;
         document.getElementById('expectedStudentsInput').disabled = true;
         document.getElementById('absentUsnsInput').disabled = true;
+        document.getElementById('rosterUsnsInput').disabled = true;
+        document.getElementById('useRosterOrderCheckbox').disabled = true;
         initBtn.disabled = true;
         initBtn.textContent = '🔒 Session Locked';
         
