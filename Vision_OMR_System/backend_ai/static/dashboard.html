@@ -558,10 +558,41 @@
             </div>
 
             <!-- Live Webcam Mode -->
-            <div id="webcamModeContainer" style="display: none; text-align: center;">
-              <video id="webcamVideo" autoplay playsinline style="width: 100%; max-width: 600px; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0 auto 16px auto; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+            <div id="webcamModeContainer" style="display: none; text-align: center; position: relative; max-width: 600px; margin: 0 auto 16px auto;">
+              <video id="webcamVideo" autoplay playsinline style="width: 100%; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+              <img id="webcamRenderImage" style="width: 100%; height: auto; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
+              
+              <!-- Glassmorphic HUD overlay -->
+              <div id="webcamHudCard" style="display: none; position: absolute; top: 16px; right: 16px; width: 220px; padding: 14px; border-radius: 12px; background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 2px solid rgba(34, 197, 94, 0.4); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6); text-align: left; font-family: system-ui, -apple-system, sans-serif; color: #fff; z-index: 10; pointer-events: none; transition: all 0.3s ease;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 4px;">
+                      <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.8px; color: #fbbf24;">OMR LIVE HUD</span>
+                      <span id="hudStatusBadge" style="background: rgba(34, 197, 94, 0.2); color: #4ade80; padding: 2px 6px; border-radius: 4px; font-size: 8px; font-weight: bold;">ACTIVE</span>
+                  </div>
+                  <div style="margin-bottom: 6px;">
+                      <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-transform: uppercase;">Student USN</div>
+                      <span id="hudUsn" style="font-weight: 700; font-family: monospace; letter-spacing: 0.5px; color: #e0f2fe;">UNKNOWN</span>
+                  </div>
+                  <div style="margin-bottom: 6px;">
+                      <div style="font-size: 9px; color: rgba(255,255,255,0.5); text-transform: uppercase;">Score:</div>
+                      <span id="hudScore" style="font-size: 22px; font-weight: 800; color: #4ade80;">0.0%</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px;">
+                      <div>
+                          <span style="color: rgba(255,255,255,0.6);">Correct:</span>
+                          <span id="hudCorrect" style="font-weight: 600; color: #4ade80;">0</span>
+                      </div>
+                      <div>
+                          <span style="color: rgba(255,255,255,0.6);">Incorrect:</span>
+                          <span id="hudIncorrect" style="font-weight: 600; color: #f87171;">0</span>
+                      </div>
+                  </div>
+                  <div id="hudReviewStatus" style="margin-top: 6px; font-size: 9px; font-weight: bold; text-align: center; padding: 4px; border-radius: 6px; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2);">
+                      STATUS: OK
+                  </div>
+              </div>
+
               <canvas id="webcamCanvas" width="640" height="480" style="display: none;"></canvas>
-              <div style="display: flex; gap: 8px; justify-content: center; margin-bottom: 12px;">
+              <div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px; margin-bottom: 12px;">
                 <button class="btn btn-primary" id="startWebcamBtn" style="padding: 8px 16px; font-size: 13px; width: auto;">Start Camera</button>
                 <button class="btn btn-secondary" id="stopWebcamBtn" style="padding: 8px 16px; font-size: 13px; width: auto; display: none;">Stop Camera</button>
               </div>
@@ -570,7 +601,7 @@
               <!-- Webcam Freeze Confirmation Bar -->
               <div id="webcamFreezeBar" style="display: none; background: rgba(34, 197, 94, 0.1); border: 2px dashed var(--green); padding: 16px; border-radius: var(--radius); margin-bottom: 16px; text-align: center;">
                 <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">🎉 Sheet Scanned Successfully!</div>
-                <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">The scan has been frozen. You can review the score below.</div>
+                <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">The scan has been frozen. Confirm the score in the HUD card.</div>
                 <div style="display: flex; gap: 8px; justify-content: center;">
                   <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--green), #059669);">Confirm & Save</button>
                   <button class="btn btn-secondary" id="webcamRescanBtn" style="padding: 6px 12px; font-size: 12px; width: auto;">Re-scan</button>
@@ -1797,6 +1828,13 @@
     const uploadModeContainer = document.getElementById('uploadModeContainer');
     const webcamModeContainer = document.getElementById('webcamModeContainer');
     const webcamVideo = document.getElementById('webcamVideo');
+    const webcamRenderImage = document.getElementById('webcamRenderImage');
+    const webcamHudCard = document.getElementById('webcamHudCard');
+    const hudUsn = document.getElementById('hudUsn');
+    const hudScore = document.getElementById('hudScore');
+    const hudCorrect = document.getElementById('hudCorrect');
+    const hudIncorrect = document.getElementById('hudIncorrect');
+    const hudReviewStatus = document.getElementById('hudReviewStatus');
     const webcamCanvas = document.getElementById('webcamCanvas');
     const startWebcamBtn = document.getElementById('startWebcamBtn');
     const stopWebcamBtn = document.getElementById('stopWebcamBtn');
@@ -1866,26 +1904,45 @@
               webcamStatus.textContent = '✅ Scan Frozen.';
               webcamStatus.style.color = 'var(--green)';
               
-              // Render results onto page
-              renderResults(data);
-              
-              // Display annotated frame
+              // Display annotated frame directly in the camera slot instead of the video element
               if (data.annotated_image_b64) {
-                resultImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-                resultImage.style.display = '';
-                placeholder.style.display = 'none';
+                webcamVideo.style.display = 'none';
+                webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+                webcamRenderImage.style.display = 'block';
               }
+              
+              // Update HUD overlay elements
+              if (data.score_report) {
+                hudUsn.textContent = data.usn || 'UNKNOWN';
+                hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+                hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+                hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+                hudIncorrect.textContent = data.score_report.incorrect;
+                
+                const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+                if (hasReview) {
+                  hudReviewStatus.textContent = '⚠️ REVIEW REQUIRED';
+                  hudReviewStatus.style.background = 'rgba(239, 68, 68, 0.15)';
+                  hudReviewStatus.style.color = '#f87171';
+                  hudReviewStatus.style.borderColor = 'rgba(239, 68, 68, 0.2)';
+                } else {
+                  hudReviewStatus.textContent = '🟢 STATUS: OK';
+                  hudReviewStatus.style.background = 'rgba(34, 197, 94, 0.15)';
+                  hudReviewStatus.style.color = '#4ade80';
+                  hudReviewStatus.style.borderColor = 'rgba(34, 197, 94, 0.2)';
+                }
+              }
+              webcamHudCard.style.display = 'block';
               return;
             }
             
-            // Normal live update flow if not frozen
+            // Normal live update flow (do not render results below the fold to keep clean)
             if (!window._webcamFrozen) {
               resultData = data;
-              renderResults(data);
               if (data.annotated_image_b64) {
-                resultImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-                resultImage.style.display = '';
-                placeholder.style.display = 'none';
+                webcamVideo.style.display = 'none';
+                webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+                webcamRenderImage.style.display = 'block';
               }
             }
           } catch (e) {
@@ -1921,6 +1978,10 @@
       window._webcamFrozen = false;
       window._frozenResult = null;
       document.getElementById('webcamFreezeBar').style.display = 'none';
+      webcamRenderImage.style.display = 'none';
+      webcamRenderImage.src = '';
+      webcamVideo.style.display = 'block';
+      webcamHudCard.style.display = 'none';
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
@@ -1941,6 +2002,10 @@
       window._webcamFrozen = false;
       window._frozenResult = null;
       document.getElementById('webcamFreezeBar').style.display = 'none';
+      webcamRenderImage.style.display = 'none';
+      webcamRenderImage.src = '';
+      webcamVideo.style.display = 'block';
+      webcamHudCard.style.display = 'none';
       webcamStatus.textContent = 'Restarting scan...';
       webcamStatus.style.color = 'var(--text-secondary)';
       

@@ -108,20 +108,20 @@ def classify_bubble(
     ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
     std_inner = float(np.std(gray[mask_indices])) if np.any(mask_indices) else 0.0
     
-    # Calculate Otsu fill ratio
+    # Calculate ink fill ratio relative to local paper brightness
+    thresh_val = max(40.0, local_paper - 28.0)
+    ink_pixels = np.count_nonzero(gray[mask_indices] < thresh_val) if np.any(mask_indices) else 0
     mask_pixels = np.count_nonzero(mask)
-    _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    otsu_masked = cv2.bitwise_and(otsu_bin, mask)
-    fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+    fill_ratio = ink_pixels / mask_pixels if mask_pixels > 0 else 0.0
     
     if mean_inner < 50.0 and local_paper < 50.0:
         state = BubbleState.FILLED
-    elif contrast_diff >= 30.0 and ratio >= 0.14 and fill_ratio >= 0.25:
+    elif contrast_diff >= 28.0 and ratio >= 0.12 and fill_ratio >= 0.15:
         if std_inner < 32.0:
             state = BubbleState.FILLED
         else:
             state = BubbleState.AMBIGUOUS
-    elif contrast_diff <= 25.0 or ratio <= 0.10 or fill_ratio < 0.20:
+    elif contrast_diff <= 18.0 or ratio <= 0.08 or fill_ratio < 0.08:
         state = BubbleState.EMPTY
     else:
         # Ambiguous zone fallback
@@ -168,20 +168,20 @@ def classify_all(
         contrast_diff = local_paper - mean_inner
         ratio = contrast_diff / local_paper if local_paper > 0 else 0.0
         
-        # Otsu fill ratio
+        # Calculate ink fill ratio relative to local paper brightness
+        thresh_val = max(40.0, local_paper - 28.0)
+        ink_pixels = np.count_nonzero(gray[mask_indices] < thresh_val) if np.any(mask_indices) else 0
         mask_pixels = np.count_nonzero(mask)
-        _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        otsu_masked = cv2.bitwise_and(otsu_bin, mask)
-        fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
+        fill_ratio = ink_pixels / mask_pixels if mask_pixels > 0 else 0.0
         
         if mean_inner < 50.0 and local_paper < 50.0:
             state = BubbleState.FILLED
-        elif contrast_diff >= 30.0 and ratio >= 0.14 and fill_ratio >= 0.25:
+        elif contrast_diff >= 28.0 and ratio >= 0.12 and fill_ratio >= 0.15:
             if std_inner < 32.0:
                 state = BubbleState.FILLED
             else:
                 state = BubbleState.AMBIGUOUS
-        elif contrast_diff <= 25.0 or ratio <= 0.10 or fill_ratio < 0.20:
+        elif contrast_diff <= 18.0 or ratio <= 0.08 or fill_ratio < 0.08:
             state = BubbleState.EMPTY
         else:
             # Ambiguous zone: verify with YOLO model's confidence
