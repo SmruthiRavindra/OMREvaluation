@@ -627,6 +627,17 @@
               <span id="pageCountAlertMsg"></span>
             </div>
 
+            <!-- Batch Navigation -->
+            <div id="batchNavigatorContainer" style="display: none; margin-top: 16px; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input);">
+              <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; font-weight: 700; display: flex; justify-content: space-between;">
+                <span>📑 Batch Sheets Navigator</span>
+                <span id="batchCountBadge" style="color: var(--accent); font-weight: 800;">0 sheets</span>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <select id="batchSheetSelect" style="flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text-primary); font-size: 12px; cursor: pointer;"></select>
+              </div>
+            </div>
+
             <div style="margin-top: 8px;">
               <button class="btn btn-secondary" id="clearBtn" style="display:none;">
                 ✕ Clear & Reset
@@ -1061,6 +1072,9 @@
       btnShowGrading.style.display = 'none';
       document.getElementById('submitDbBtn').disabled = true;
       document.getElementById('dbStatus').textContent = '';
+      document.getElementById('batchNavigatorContainer').style.display = 'none';
+      document.getElementById('batchProgressSection').style.display = 'none';
+      document.getElementById('pageCountAlert').style.display = 'none';
       showBubblesTab();
       hideError();
     });
@@ -1200,6 +1214,7 @@
                   window.batchResults = task.results;
                   resultData = task.results[0]; // populate first sheet in visual preview
                   renderResults(resultData);
+                  setupBatchNavigator();
 
                   // Page Count Validation
                   const expectedCount = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
@@ -1301,35 +1316,82 @@
       scoreMultiVal.textContent = multiple_marked;
     }
 
-    // applyOverrides — recalculate score from per_question + window._overrides (no API call)
-    function applyOverrides(report) {
+    // recalculateReportScores — recalculate scores inside report model and update UI dynamically
+    function recalculateReportScores(report) {
       if (!report || !report.per_question) return;
       let correct = 0, incorrect = 0, unanswered = 0, multiple_marked = 0, ambiguous = 0;
       report.per_question.forEach(q => {
-        const overridden = (window._overrides && window._overrides[q.question_number]) || q.status;
-        if (overridden === 'correct') correct++;
-        else if (overridden === 'incorrect') incorrect++;
-        else if (overridden === 'unanswered') unanswered++;
-        else if (overridden === 'multiple_marked') multiple_marked++;
-        else if (overridden === 'ambiguous') ambiguous++;
+        if (q.status === 'correct') correct++;
+        else if (q.status === 'incorrect') incorrect++;
+        else if (q.status === 'unanswered') unanswered++;
+        else if (q.status === 'multiple_marked') multiple_marked++;
+        else if (q.status === 'ambiguous') ambiguous++;
       });
       const total = report.total_questions || report.per_question.length;
-      const scorePct = total > 0 ? ((correct / total) * 100) : 0;
-      // Update score display
-      scorePercent.textContent = `${scorePct.toFixed(2)}%`;
-      scorePercent.style.color = scorePct >= 75 ? 'var(--green)' : scorePct >= 40 ? 'var(--amber)' : 'var(--red)';
+      report.correct = correct;
+      report.incorrect = incorrect;
+      report.unanswered = unanswered;
+      report.multiple_marked = multiple_marked;
+      report.ambiguous = ambiguous;
+      report.score_percent = total > 0 ? parseFloat(((correct / total) * 100).toFixed(2)) : 0;
+      
+      // Update UI displays
+      scorePercent.textContent = `${report.score_percent.toFixed(2)}%`;
+      scorePercent.style.color = report.score_percent >= 75 ? 'var(--green)' : report.score_percent >= 40 ? 'var(--amber)' : 'var(--red)';
       scoreCorrect.textContent = correct;
       scoreTotal.textContent = total;
       scoreCorrectVal.textContent = correct;
       scoreIncorrectVal.textContent = incorrect;
       scoreUnansweredVal.textContent = unanswered;
       scoreMultiVal.textContent = multiple_marked;
+      
       // Update HUD if visible
       if (hudScore) {
-        hudScore.textContent = scorePct.toFixed(1) + '%';
-        hudScore.style.color = scorePct >= 40 ? '#4ade80' : '#f87171';
+        hudScore.textContent = report.score_percent.toFixed(1) + '%';
+        hudScore.style.color = report.score_percent >= 40 ? '#4ade80' : '#f87171';
         hudCorrect.textContent = correct + ' / ' + total;
         hudIncorrect.textContent = incorrect;
+      }
+
+      // Update the batch navigator option text if in batch mode
+      if (window.batchResults && window.batchResults.length > 0) {
+        const select = document.getElementById('batchSheetSelect');
+        const idx = window.batchResults.indexOf(resultData);
+        if (idx !== -1 && select.options[idx]) {
+          const usn = resultData.usn || 'UNKNOWN';
+          select.options[idx].textContent = `Sheet ${idx + 1}: USN ${usn} (Score: ${report.score_percent.toFixed(1)}%)`;
+        }
+      }
+    }
+
+    // setupBatchNavigator — initializes page navigator selector when a PDF/multiple JPEGs complete
+    function setupBatchNavigator() {
+      const container = document.getElementById('batchNavigatorContainer');
+      const select = document.getElementById('batchSheetSelect');
+      const badge = document.getElementById('batchCountBadge');
+      
+      if (window.batchResults && window.batchResults.length > 0) {
+        container.style.display = 'block';
+        badge.textContent = `${window.batchResults.length} sheets`;
+        
+        select.innerHTML = '';
+        window.batchResults.forEach((res, idx) => {
+          const opt = document.createElement('option');
+          opt.value = idx;
+          const score = res.score_report ? `${res.score_report.score_percent.toFixed(1)}%` : '--';
+          const usn = res.usn || 'UNKNOWN';
+          opt.textContent = `Sheet ${idx + 1}: USN ${usn} (Score: ${score})`;
+          select.appendChild(opt);
+        });
+        
+        // Switch page handler
+        select.onchange = (e) => {
+          const idx = parseInt(e.target.value);
+          resultData = window.batchResults[idx];
+          renderResults(resultData);
+        };
+      } else {
+        container.style.display = 'none';
       }
     }
 
@@ -1513,26 +1575,30 @@
             const qNum = parseInt(e.target.dataset.qnum);
             const origStatus = e.target.dataset.origStatus;
             const val = e.target.value;
-            if (val === 'default') {
-              delete window._overrides[qNum];
-            } else {
-              window._overrides[qNum] = val;
+            
+            const q = report.per_question.find(item => item.question_number === qNum);
+            if (q) {
+              q.status = (val === 'default') ? origStatus : val;
             }
 
             // Update status chip
             const chip = document.getElementById(`statusChip_${qNum}`);
             if (chip) {
-              const displayStatus = val === 'default' ? origStatus : val;
+              const displayStatus = (val === 'default') ? origStatus : val;
               chip.textContent = displayStatus.replace('_', ' ');
               chip.className = 'state-chip ' + (displayStatus === 'correct' ? 'filled' : displayStatus === 'unanswered' ? 'empty' : 'ambiguous');
             }
 
-            // Show/hide Save Override button
-            const hasOverrides = Object.keys(window._overrides).length > 0;
-            document.getElementById('saveOverrideBtn').style.display = hasOverrides ? 'inline-block' : 'none';
+            // Show/hide Save Override button (only in single sheet mode, not batch)
+            const hasOverrides = report.per_question.some(qItem => {
+              const sel = document.querySelector(`.override-select[data-qnum="${qItem.question_number}"]`);
+              return sel && sel.value !== 'default';
+            });
+            const isBatch = window.batchResults && window.batchResults.length > 0;
+            document.getElementById('saveOverrideBtn').style.display = (hasOverrides && !isBatch) ? 'inline-block' : 'none';
             
-            // Recompute scores live from per_question + overrides
-            applyOverrides(report);
+            // Recompute scores live
+            recalculateReportScores(report);
           });
         });
       } else {

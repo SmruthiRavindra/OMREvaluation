@@ -385,6 +385,31 @@ def run_batch_evaluation_sync(
             empty_cnt = sum(1 for c in classifications if c.state == BubbleState.EMPTY)
             ambig_cnt = sum(1 for c in classifications if c.state == BubbleState.AMBIGUOUS)
             
+            # Generate annotated preview image for page-by-page verification
+            valid_classifications = []
+            grid = map_bubbles_to_grid(classifications, layout, usn_y2)
+            for q_num, opts in grid.items():
+                for opt_letter, cr in opts.items():
+                    valid_classifications.append(cr)
+            usn_det = usn_dets[0] if usn_dets else None
+            annotated = _annotate_image(clean_img, usn_det, valid_classifications)
+            _, annotated_buf = cv2.imencode(".jpg", annotated)
+            annotated_img_b64 = base64.b64encode(annotated_buf).decode("utf-8")
+
+            # Convert classifications to bubbles list for interactive correction
+            bubbles_res = [
+                {
+                    "bbox": list(c.detection.bbox),
+                    "confidence": round(c.detection.confidence, 4),
+                    "class_id": c.detection.class_id,
+                    "class_name": c.detection.class_name,
+                    "state": c.state.value,
+                    "fill_ratio": round(c.fill_ratio, 4),
+                    "needs_review": c.needs_review,
+                }
+                for c in classifications
+            ]
+
             t_end = time.perf_counter()
             result = {
                 "filename": filename,
@@ -395,6 +420,10 @@ def run_batch_evaluation_sync(
                 "needs_manual_review": ambig_cnt > 0,
                 "total_detections": len(classifications),
                 "score_report": score_report_dict,
+                "annotated_image_b64": annotated_img_b64,
+                "preprocessed_image_b64": annotated_img_b64,
+                "original_image_b64": annotated_img_b64,
+                "bubbles": bubbles_res,
                 "processing_time_ms": int((t_end - t_start) * 1000)
             }
             
