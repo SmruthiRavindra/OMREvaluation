@@ -189,7 +189,11 @@ server.on('upgrade', (request, socket, head) => {
       
       backendWs.on('close', (code, reason) => {
         console.log(`[Gateway WS Proxy] Backend closed: ${code} ${reason}`);
-        ws.close(code, reason);
+        if (code && code !== 1005) {
+          ws.close(code, reason);
+        } else {
+          ws.close();
+        }
       });
       
       backendWs.on('error', (err) => {
@@ -205,7 +209,11 @@ server.on('upgrade', (request, socket, head) => {
       
       ws.on('close', (code, reason) => {
         console.log(`[Gateway WS Proxy] Client closed: ${code} ${reason}`);
-        backendWs.close(code, reason);
+        if (code && code !== 1005) {
+          backendWs.close(code, reason);
+        } else {
+          backendWs.close();
+        }
       });
       
       ws.on('error', (err) => {
