@@ -74,6 +74,10 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+    volumes:
+      - ./data_gateway:/app
+      - /app/node_modules
+
 
 volumes:
   pgdata:

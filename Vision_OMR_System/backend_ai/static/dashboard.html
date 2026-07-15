@@ -647,15 +647,27 @@
             </button>
             <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
             
-            <div style="display: flex; gap: 8px;">
-              <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">
-                📊 Download Excel
-              </button>
-              <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">
-                📄 Download PDF
-              </button>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Download Excel</button>
+              <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 Download PDF</button>
             </div>
-            <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 12px; text-align: center;"></div>
+            <button class="btn btn-secondary" id="viewDbBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📋 View Database Records</button>
+            <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
+          </div>
+        </div>
+
+        <!-- Inline DB Viewer Panel -->
+        <div class="card" id="dbViewerPanel" style="display:none; margin-bottom: 20px;">
+          <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+            <span>📋 Database Records</span>
+            <button onclick="document.getElementById('dbViewerPanel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">✕</button>
+          </div>
+          <div class="card-body">
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <select id="dbSessionSelector" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px;"><option value="">Select a session...</option></select>
+              <button class="btn btn-secondary" id="dbLoadResultsBtn" style="padding:6px 10px; font-size:11px;">Load</button>
+            </div>
+            <div id="dbResultsTable" style="font-size:11px;"></div>
           </div>
         </div>
       </div>
@@ -735,9 +747,12 @@
       <div class="card" id="tableCard" style="display:none;">
         <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
           <span id="tableTitle">🔬 Bubble Details</span>
-          <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
-            <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
-            <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+          <div style="display: flex; gap: 4px; align-items: center;">
+            <button id="saveOverrideBtn" style="display:none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: linear-gradient(135deg, #3b82f6, #6366f1); color: white; border: none; cursor: pointer; font-weight: 600;">💾 Save Override</button>
+            <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
+              <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
+              <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+            </div>
           </div>
         </div>
         <div class="card-body" style="padding: 0;">
@@ -766,6 +781,7 @@
                   <th>Marked</th>
                   <th>Correct</th>
                   <th>Status</th>
+                  <th>Override</th>
                 </tr>
               </thead>
               <tbody id="gradingTableBody"></tbody>
@@ -1285,7 +1301,106 @@
       scoreMultiVal.textContent = multiple_marked;
     }
 
-    // ── Render results ────────────────────────────────────
+    // applyOverrides — recalculate score from per_question + window._overrides (no API call)
+    function applyOverrides(report) {
+      if (!report || !report.per_question) return;
+      let correct = 0, incorrect = 0, unanswered = 0, multiple_marked = 0, ambiguous = 0;
+      report.per_question.forEach(q => {
+        const overridden = (window._overrides && window._overrides[q.question_number]) || q.status;
+        if (overridden === 'correct') correct++;
+        else if (overridden === 'incorrect') incorrect++;
+        else if (overridden === 'unanswered') unanswered++;
+        else if (overridden === 'multiple_marked') multiple_marked++;
+        else if (overridden === 'ambiguous') ambiguous++;
+      });
+      const total = report.total_questions || report.per_question.length;
+      const scorePct = total > 0 ? ((correct / total) * 100) : 0;
+      // Update score display
+      scorePercent.textContent = `${scorePct.toFixed(2)}%`;
+      scorePercent.style.color = scorePct >= 75 ? 'var(--green)' : scorePct >= 40 ? 'var(--amber)' : 'var(--red)';
+      scoreCorrect.textContent = correct;
+      scoreTotal.textContent = total;
+      scoreCorrectVal.textContent = correct;
+      scoreIncorrectVal.textContent = incorrect;
+      scoreUnansweredVal.textContent = unanswered;
+      scoreMultiVal.textContent = multiple_marked;
+      // Update HUD if visible
+      if (hudScore) {
+        hudScore.textContent = scorePct.toFixed(1) + '%';
+        hudScore.style.color = scorePct >= 40 ? '#4ade80' : '#f87171';
+        hudCorrect.textContent = correct + ' / ' + total;
+        hudIncorrect.textContent = incorrect;
+      }
+    }
+
+    // bindFreezeBarButtons — rebind Confirm & Save and Re-scan after dynamic HTML replacement
+    function bindFreezeBarButtons() {
+      const confirmBtn2 = document.getElementById('webcamConfirmSaveBtn');
+      const rescanBtn2  = document.getElementById('webcamRescanBtn');
+      if (confirmBtn2) confirmBtn2.addEventListener('click', confirmSaveHandler);
+      if (rescanBtn2)  rescanBtn2.addEventListener('click',  rescanHandler);
+    }
+
+    // Named WS handlers so Scan Next can pass them to a new WebSocket
+    function wsMessageHandler(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.filled_count > 0 && !window._webcamFrozen) {
+          window._webcamFrozen = true;
+          window._frozenResult = data;
+          resultData = data;
+          stopScanning();
+          if (ws) { ws.close(); ws = null; }
+          document.getElementById('webcamFreezeBar').style.display = 'block';
+          webcamStatus.textContent = '✅ Scan Frozen.';
+          webcamStatus.style.color = 'var(--green)';
+          if (data.annotated_image_b64) {
+            webcamVideo.style.display = 'none';
+            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+            webcamRenderImage.style.display = 'block';
+          }
+          if (data.score_report) {
+            hudUsn.textContent = data.usn || 'UNKNOWN';
+            hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+            hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+            hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+            hudIncorrect.textContent = data.score_report.incorrect;
+            const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+            hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+            hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+            hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+            hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+          }
+          webcamHudCard.style.display = 'block';
+          // Also render grading table for override support
+          renderResults(data);
+          return;
+        }
+        if (!window._webcamFrozen) {
+          resultData = data;
+          if (data.annotated_image_b64) {
+            webcamVideo.style.display = 'none';
+            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+            webcamRenderImage.style.display = 'block';
+          }
+        }
+      } catch(e) { console.error('WS parse error', e); }
+    }
+    function wsErrorHandler(err) {
+      if (!window._webcamFrozen) {
+        webcamStatus.textContent = '❌ Connection error.';
+        webcamStatus.style.color = 'var(--red)';
+      }
+    }
+    function wsCloseHandler() {
+      if (!window._webcamFrozen) {
+        webcamStatus.textContent = 'Tunnel closed.';
+        webcamStatus.style.color = 'var(--text-muted)';
+        stopScanning();
+      }
+    }
+
+
     function renderResults(data) {
       // Stats
       document.getElementById('filledCount').textContent = data.filled_count;
@@ -1332,66 +1447,92 @@
         scoreSection.style.display = 'block';
         btnShowGrading.style.display = 'block';
         
-        // Fill Grading Table
+        // Fill Grading Table with rich override dropdowns
+        window._overrides = {};
+        document.getElementById('saveOverrideBtn').style.display = 'none';
         gradingTableBody.innerHTML = '';
+        
         (report.per_question || []).forEach(q => {
           const tr = document.createElement('tr');
-          const markedText = q.marked_options.length > 0 ? q.marked_options.join(', ') : '—';
+          const markedText = q.marked_options && q.marked_options.length > 0 ? q.marked_options.join(', ') : '—';
           const correctText = q.correct_option || '—';
           
           let statusChipClass = 'empty';
           if (q.status === 'correct') statusChipClass = 'filled';
-          else if (q.status === 'incorrect' || q.status === 'multiple_marked') statusChipClass = 'ambiguous';
+          else if (q.status === 'incorrect' || q.status === 'multiple_marked' || q.status === 'ambiguous') statusChipClass = 'ambiguous';
           
-          let actionCell = `
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span class="state-chip ${statusChipClass}">${q.status}</span>
-              <select class="override-select" data-qnum="${q.question_number}" style="padding: 2px 4px; font-size: 11px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer;">
-                <option value="default" selected>Override...</option>
-                <option value="correct" ${q.status === 'correct' ? 'disabled' : ''}>✅ Give Marks</option>
-                <option value="incorrect" ${q.status === 'incorrect' ? 'disabled' : ''}>❌ Mark Wrong</option>
-                <option value="multiple_marked" ${q.status === 'multiple_marked' ? 'disabled' : ''}>⚠️ Multiple</option>
-              </select>
-            </div>
-          `;
+          // Build contextual override options based on current status
+          let overrideOptions = '';
+          if (q.status === 'multiple_marked') {
+            overrideOptions = `
+              <option value="default" selected>Override...</option>
+              <option value="correct">✅ Grant Mark (correct)</option>
+              <option value="incorrect">❌ Mark as Incorrect</option>
+              <option value="unanswered">⬜ Mark Unanswered</option>`;
+          } else if (q.status === 'unanswered') {
+            overrideOptions = `
+              <option value="default" selected>Override...</option>
+              <option value="correct">✅ Mark as Correct</option>
+              <option value="incorrect">❌ Mark as Incorrect</option>`;
+          } else if (q.status === 'incorrect') {
+            overrideOptions = `
+              <option value="default" selected>Override...</option>
+              <option value="correct">✅ Grant Mark (correct)</option>
+              <option value="unanswered">⬜ Mark Unanswered</option>`;
+          } else if (q.status === 'ambiguous') {
+            overrideOptions = `
+              <option value="default" selected>Override...</option>
+              <option value="correct">✅ Mark as Correct</option>
+              <option value="incorrect">❌ Mark as Incorrect</option>
+              <option value="unanswered">⬜ Mark Unanswered</option>`;
+          } else {
+            overrideOptions = `
+              <option value="default" selected>—</option>
+              <option value="incorrect">❌ Override to Wrong</option>
+              <option value="unanswered">⬜ Mark Unanswered</option>`;
+          }
           
           tr.innerHTML = `
-            <td style="color:var(--text-muted)">Q${q.question_number}</td>
-            <td style="font-weight: 700;">${markedText}</td>
-            <td style="color: var(--text-secondary);">${correctText}</td>
-            <td>${actionCell}</td>
+            <td style="color:var(--text-muted); font-weight:600;">Q${q.question_number}</td>
+            <td style="font-weight: 700; font-family: monospace;">${markedText}</td>
+            <td style="color: var(--green); font-family: monospace; font-weight:700;">${correctText}</td>
+            <td><span class="state-chip ${statusChipClass}" id="statusChip_${q.question_number}">${q.status.replace('_', ' ')}</span></td>
+            <td>
+              <select class="override-select" data-qnum="${q.question_number}" data-orig-status="${q.status}"
+                style="padding: 3px 5px; font-size: 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); cursor: pointer; max-width: 130px;">
+                ${overrideOptions}
+              </select>
+            </td>
           `;
           gradingTableBody.appendChild(tr);
         });
 
-        // Bind events to select elements
+        // Bind override select events — pure JS re-scoring, no API call needed
         document.querySelectorAll('.override-select').forEach(select => {
           select.addEventListener('change', (e) => {
             const qNum = parseInt(e.target.dataset.qnum);
+            const origStatus = e.target.dataset.origStatus;
             const val = e.target.value;
-            if (val === 'default') return;
-            
-            const q = report.per_question.find(item => item.question_number === qNum);
-            if (q) {
-              q.status = val;
-              
-              // Update status chip
-              const statusChip = select.previousElementSibling;
-              statusChip.textContent = val;
-              
-              let newClass = 'empty';
-              if (val === 'correct') newClass = 'filled';
-              else if (val === 'incorrect' || val === 'multiple_marked') newClass = 'ambiguous';
-              statusChip.className = `state-chip ${newClass}`;
-              
-              // Update dropdown states
-              Array.from(select.options).forEach(opt => {
-                if (opt.value === 'default') opt.selected = true;
-                else opt.disabled = (opt.value === val);
-              });
-              
-              updateScoreSummary();
+            if (val === 'default') {
+              delete window._overrides[qNum];
+            } else {
+              window._overrides[qNum] = val;
             }
+
+            // Update status chip
+            const chip = document.getElementById(`statusChip_${qNum}`);
+            if (chip) {
+              const displayStatus = val === 'default' ? origStatus : val;
+              chip.textContent = displayStatus.replace('_', ' ');
+              chip.className = 'state-chip ' + (displayStatus === 'correct' ? 'filled' : displayStatus === 'unanswered' ? 'empty' : 'ambiguous');
+            }
+
+            // Show/hide Save Override button
+            const hasOverrides = Object.keys(window._overrides).length > 0;
+            document.getElementById('saveOverrideBtn').style.display = hasOverrides ? 'inline-block' : 'none';
+            
+            // Recompute scores live from per_question + overrides
+            applyOverrides(report);
           });
         });
       } else {
@@ -1997,10 +2138,134 @@
       webcamStatus.style.color = 'var(--text-secondary)';
     }
 
+    // ── Save Override button (grading table) ─────────────────
+    document.getElementById('saveOverrideBtn').addEventListener('click', async () => {
+      if (!resultData || !resultData.score_report) return;
+      const report = resultData.score_report;
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      let correct = 0, incorrect = 0, unanswered = 0, multiple_marked = 0;
+      const perQ = (report.per_question || []).map(q => {
+        const s = (window._overrides && window._overrides[q.question_number]) || q.status;
+        if (s === 'correct') correct++;
+        else if (s === 'incorrect') incorrect++;
+        else if (s === 'unanswered') unanswered++;
+        else if (s === 'multiple_marked') multiple_marked++;
+        return { ...q, status: s };
+      });
+      const total = report.total_questions || perQ.length;
+      const score_percent = total > 0 ? parseFloat(((correct / total) * 100).toFixed(2)) : 0;
+      const usn = document.getElementById('usnInput').value.trim().toUpperCase() || resultData.usn || 'UNKNOWN';
+      const btn = document.getElementById('saveOverrideBtn');
+      btn.textContent = 'Saving...'; btn.disabled = true;
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/results`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, usn, score: correct, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question: perQ })
+        });
+        if (resp.ok) {
+          btn.textContent = '✅ Overrides Saved!';
+          btn.style.background = 'linear-gradient(135deg, var(--green), #059669)';
+          setTimeout(() => {
+            btn.textContent = '💾 Save Override';
+            btn.style.background = 'linear-gradient(135deg, #3b82f6, #6366f1)';
+            btn.disabled = false;
+          }, 2500);
+          await fetchPendingCount();
+        } else {
+          alert('❌ Failed to save overrides.');
+          btn.textContent = '💾 Save Override'; btn.disabled = false;
+        }
+      } catch(e) {
+        alert('❌ Error: ' + e.message);
+        btn.textContent = '💾 Save Override'; btn.disabled = false;
+      }
+    });
+
+    // ── View Database button ──────────────────────────────────
+    document.getElementById('viewDbBtn').addEventListener('click', async () => {
+      const panel = document.getElementById('dbViewerPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      if (panel.style.display === 'none') return;
+      // Load session list
+      const sel = document.getElementById('dbSessionSelector');
+      sel.innerHTML = '<option value="">Loading sessions...</option>';
+      try {
+        // Fetch all known sessions from gateway debug endpoint
+        const resp = await fetch(`${GATEWAY_URL}/debug/db-status`);
+        const data = await resp.json();
+        // Also try to load sessions from our current session inputs as seeds
+        const curSession = document.getElementById('sessionIdInput').value.trim();
+        const sessionsToShow = new Set();
+        if (curSession) sessionsToShow.add(curSession);
+        // Try fetching sessions via /api/sessions if endpoint exists
+        try {
+          const sResp = await fetch(`${GATEWAY_URL}/api/sessions`);
+          if (sResp.ok) {
+            const sData = await sResp.json();
+            (sData.rows || []).forEach(s => sessionsToShow.add(s.id));
+          }
+        } catch(_) {}
+        sel.innerHTML = '<option value="">Select a session...</option>';
+        sessionsToShow.forEach(id => {
+          const opt = document.createElement('option');
+          opt.value = id; opt.textContent = id;
+          sel.appendChild(opt);
+        });
+        if (data.tables) {
+          document.getElementById('dbResultsTable').innerHTML = `<div style="color:var(--green);margin-bottom:8px;">✅ DB Connected — Tables: ${data.tables.join(', ')}</div>`;
+        }
+      } catch(e) {
+        sel.innerHTML = '<option value="">❌ Cannot connect to gateway</option>';
+        document.getElementById('dbResultsTable').innerHTML = `<div style="color:var(--red);">Error: ${e.message}</div>`;
+      }
+    });
+
+    document.getElementById('dbLoadResultsBtn').addEventListener('click', async () => {
+      const sessionId = document.getElementById('dbSessionSelector').value;
+      if (!sessionId) { alert('Select a session first.'); return; }
+      const tableDiv = document.getElementById('dbResultsTable');
+      tableDiv.innerHTML = 'Loading...';
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/results`);
+        const data = await resp.json();
+        const rows = data.rows || [];
+        if (rows.length === 0) { tableDiv.innerHTML = '<em style="color:var(--text-muted)">No results saved yet for this session.</em>'; return; }
+        let html = `<table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead><tr style="border-bottom:1px solid var(--border);">
+            <th style="padding:4px 6px;text-align:left">USN</th>
+            <th style="padding:4px 6px;text-align:center">Score%</th>
+            <th style="padding:4px 6px;text-align:center">Correct</th>
+            <th style="padding:4px 6px;text-align:center">Wrong</th>
+            <th style="padding:4px 6px;text-align:center">Unanswered</th>
+            <th style="padding:4px 6px;text-align:center">Multi</th>
+            <th style="padding:4px 6px;text-align:center">Status</th>
+          </tr></thead><tbody>`;
+        rows.forEach(r => {
+          const pct = parseFloat(r.score_percent || 0);
+          const pctColor = pct >= 75 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)';
+          html += `<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:4px 6px;font-family:monospace;font-weight:700;">${r.usn}</td>
+            <td style="padding:4px 6px;text-align:center;font-weight:700;color:${pctColor};">${pct.toFixed(1)}%</td>
+            <td style="padding:4px 6px;text-align:center;color:var(--green);">${r.correct}</td>
+            <td style="padding:4px 6px;text-align:center;color:var(--red);">${r.incorrect}</td>
+            <td style="padding:4px 6px;text-align:center;color:var(--text-muted);">${r.unanswered}</td>
+            <td style="padding:4px 6px;text-align:center;color:var(--amber);">${r.multiple_marked}</td>
+            <td style="padding:4px 6px;text-align:center;">${r.status || 'PRESENT'}</td>
+          </tr>`;
+        });
+        html += '</tbody></table>';
+        tableDiv.innerHTML = html;
+      } catch(e) {
+        tableDiv.innerHTML = `<div style="color:var(--red);">Error: ${e.message}</div>`;
+      }
+    });
+
     // Webcam freeze action buttons
-    document.getElementById('webcamRescanBtn').addEventListener('click', () => {
+    function rescanHandler() {
       window._webcamFrozen = false;
       window._frozenResult = null;
+      window._overrides = {};
+      document.getElementById('saveOverrideBtn').style.display = 'none';
       document.getElementById('webcamFreezeBar').style.display = 'none';
       webcamRenderImage.style.display = 'none';
       webcamRenderImage.src = '';
@@ -2008,19 +2273,23 @@
       webcamHudCard.style.display = 'none';
       webcamStatus.textContent = 'Restarting scan...';
       webcamStatus.style.color = 'var(--text-secondary)';
-      
       // Reconnect WebSocket and resume scanning
       let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
       ws = new WebSocket(wsUrl);
-      ws.onopen = () => {
-        webcamStatus.textContent = 'Streaming live frames...';
-        webcamStatus.style.color = 'var(--green)';
-        startScanning();
-      };
-      ws.onmessage = ws.onmessage; // Keep the same handler
-      ws.onerror = ws.onerror;
-      ws.onclose = ws.onclose;
-    });
+      ws.onopen = () => { webcamStatus.textContent = 'Streaming live frames...'; webcamStatus.style.color = 'var(--green)'; startScanning(); };
+      ws.onmessage = wsMessageHandler;
+      ws.onerror = wsErrorHandler;
+      ws.onclose = wsCloseHandler;
+    }
+    document.getElementById('webcamRescanBtn').addEventListener('click', rescanHandler);
+
+    // confirmSaveHandler alias — the real logic lives in the inline addEventListener below
+    // (kept as reference for bindFreezeBarButtons)
+    function confirmSaveHandler() {
+      document.getElementById('webcamConfirmSaveBtn')?.dispatchEvent(new Event('click'));
+    }
+
+
 
     document.getElementById('webcamConfirmSaveBtn').addEventListener('click', async () => {
       const item = window._frozenResult;
@@ -2047,9 +2316,7 @@
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
-                id: sessionId, 
-                subject: subject,
-                section: section,
+                id: sessionId, subject, section,
                 total_questions: item.score_report.total_questions,
                 expected_students: expectedStudents
               })
@@ -2057,22 +2324,30 @@
           }
         } catch(e) { console.warn(e); }
         
+        // Apply any overrides from grading table
+        const report = item.score_report;
+        let correct = 0, incorrect = 0, unanswered = 0, multiple_marked = 0;
+        const perQ = (report.per_question || []).map(q => {
+          const overriddenStatus = (window._overrides && window._overrides[q.question_number]) || q.status;
+          if (overriddenStatus === 'correct') correct++;
+          else if (overriddenStatus === 'incorrect') incorrect++;
+          else if (overriddenStatus === 'unanswered') unanswered++;
+          else if (overriddenStatus === 'multiple_marked') multiple_marked++;
+          return { ...q, status: overriddenStatus };
+        });
+        const total = report.total_questions || perQ.length;
+        const score_percent = total > 0 ? parseFloat(((correct / total) * 100).toFixed(2)) : 0;
+        
         // Grab edited USN from UI if any
         let currentUsn = item.usn || 'UNKNOWN';
         const uiUsn = document.getElementById('usnInput').value.trim().toUpperCase();
         if (uiUsn) currentUsn = uiUsn;
 
         const payload = {
-          session_id: sessionId,
-          usn: currentUsn,
-          score: item.score_report.correct,
-          total: item.score_report.total_questions,
-          correct: item.score_report.correct,
-          incorrect: item.score_report.incorrect,
-          unanswered: item.score_report.unanswered,
-          multiple_marked: item.score_report.multiple_marked,
-          score_percent: item.score_report.score_percent,
-          per_question: item.score_report.per_question
+          session_id: sessionId, usn: currentUsn,
+          score: correct, total, correct, incorrect, unanswered, multiple_marked,
+          score_percent,
+          per_question: perQ
         };
         
         const resp = await fetch(`${GATEWAY_URL}/api/results`, {
@@ -2082,18 +2357,56 @@
         });
         
         if (resp.ok) {
-          alert(`✅ Result for USN ${currentUsn} saved successfully!`);
-          document.getElementById('webcamFreezeBar').style.display = 'none';
-          window._webcamFrozen = false;
-          window._frozenResult = null;
+          // ✅ Don't stop the webcam — keep the annotated frame visible
           await fetchPendingCount();
-          stopWebcam();
+          
+          // Replace freeze bar with a saved confirmation bar
+          const freezeBar = document.getElementById('webcamFreezeBar');
+          freezeBar.innerHTML = `
+            <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">✅ Saved — USN: ${currentUsn} | Score: ${score_percent.toFixed(1)}%</div>
+            <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">Annotated sheet shown below. Click Scan Next to evaluate another student.</div>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+              <button class="btn btn-primary" id="scanNextBtn" style="padding: 6px 14px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--accent), #6366f1);">📷 Scan Next</button>
+            </div>`;
+          
+          // Bind Scan Next
+          document.getElementById('scanNextBtn').addEventListener('click', () => {
+            window._webcamFrozen = false;
+            window._frozenResult = null;
+            window._overrides = {};
+            document.getElementById('saveOverrideBtn').style.display = 'none';
+            webcamRenderImage.style.display = 'none';
+            webcamRenderImage.src = '';
+            webcamVideo.style.display = 'block';
+            webcamHudCard.style.display = 'none';
+            webcamStatus.textContent = 'Restarting scan...';
+            webcamStatus.style.color = 'var(--text-secondary)';
+            // Reconnect WS
+            let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => { webcamStatus.textContent = 'Streaming live frames...'; webcamStatus.style.color = 'var(--green)'; startScanning(); };
+            ws.onmessage = wsMessageHandler;
+            ws.onerror = wsErrorHandler;
+            ws.onclose = wsCloseHandler;
+            // Restore freeze bar for next scan
+            freezeBar.innerHTML = `
+              <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">🎉 Sheet Scanned Successfully!</div>
+              <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">The scan has been frozen. Confirm the score in the HUD card.</div>
+              <div style="display: flex; gap: 8px; justify-content: center;">
+                <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--green), #059669);">Confirm &amp; Save</button>
+                <button class="btn btn-secondary" id="webcamRescanBtn" style="padding: 6px 12px; font-size: 12px; width: auto;">Re-scan</button>
+              </div>`;
+            freezeBar.style.display = 'none';
+            // Rebind new buttons
+            bindFreezeBarButtons();
+          });
         } else {
-          alert('❌ Failed to save result to database.');
+          const errData = await resp.json().catch(() => ({}));
+          alert(`❌ Failed to save: ${errData.error || resp.statusText}`);
         }
       } catch (err) {
         console.error(err);
-        alert('❌ Error saving result.');
+        alert('❌ Error saving result: ' + err.message);
       } finally {
         confirmBtn.disabled = false;
         confirmBtn.textContent = 'Confirm & Save';
@@ -2127,10 +2440,46 @@
       }
     }
     
+    // ── Blur / sharpness detection (Laplacian variance approximation) ─────────
+    function measureSharpness(ctx, w, h) {
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const pixels = imgData.data;
+      let sum = 0;
+      let sumSq = 0;
+      let count = 0;
+      // Sample every 4th pixel for speed
+      for (let y = 1; y < h - 1; y += 4) {
+        for (let x = 1; x < w - 1; x += 4) {
+          const i = (y * w + x) * 4;
+          // Convert to grayscale
+          const g = (pixels[i] * 0.299 + pixels[i+1] * 0.587 + pixels[i+2] * 0.114);
+          // Laplacian: center - average of 4 neighbors
+          const top    = ((y-1)*w+x)*4;
+          const bot    = ((y+1)*w+x)*4;
+          const left   = (y*w+(x-1))*4;
+          const right  = (y*w+(x+1))*4;
+          const gTop   = pixels[top]*0.299   + pixels[top+1]*0.587   + pixels[top+2]*0.114;
+          const gBot   = pixels[bot]*0.299   + pixels[bot+1]*0.587   + pixels[bot+2]*0.114;
+          const gLeft  = pixels[left]*0.299  + pixels[left+1]*0.587  + pixels[left+2]*0.114;
+          const gRight = pixels[right]*0.299 + pixels[right+1]*0.587 + pixels[right+2]*0.114;
+          const lap = Math.abs(g * 4 - gTop - gBot - gLeft - gRight);
+          sum += lap;
+          sumSq += lap * lap;
+          count++;
+        }
+      }
+      if (count === 0) return 0;
+      const mean = sum / count;
+      const variance = (sumSq / count) - (mean * mean);
+      return variance;
+    }
+
     function startScanning() {
       if (isScanning) return;
       isScanning = true;
       const ctx = webcamCanvas.getContext('2d');
+      const SHARPNESS_THRESHOLD = 150; // Frames below this variance are too blurry
+      let blurryCount = 0;
       
       scanInterval = setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -2140,8 +2489,24 @@
           // Draw video frame onto canvas
           ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
           
+          // Blur check — skip blurry frames
+          const sharpness = measureSharpness(ctx, webcamCanvas.width, webcamCanvas.height);
+          if (sharpness < SHARPNESS_THRESHOLD) {
+            blurryCount++;
+            if (blurryCount % 5 === 0) { // Show status every 5 blurry frames
+              webcamStatus.textContent = '🔍 Stabilizing — hold steady...';
+              webcamStatus.style.color = 'var(--text-secondary)';
+            }
+            return; // Skip this blurry frame
+          }
+          blurryCount = 0;
+          if (webcamStatus.textContent.includes('Stabilizing')) {
+            webcamStatus.textContent = 'Streaming live frames...';
+            webcamStatus.style.color = 'var(--green)';
+          }
+          
           // Convert to base64 jpeg
-          const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.6); // 60% quality compression
+          const dataUrl = webcamCanvas.toDataURL('image/jpeg', 0.75); // 75% quality for sharper frames
           
           // Send payload
           const sessionId = sessionIdInput.value.trim() || 'default';
@@ -2152,7 +2517,7 @@
         } catch (err) {
           console.error("Failed to capture/send webcam frame:", err);
         }
-      }, 100); // 10 frames per second
+      }, 150); // ~7 fps — enough for live scanning without spam
     }
     
     function stopScanning() {
