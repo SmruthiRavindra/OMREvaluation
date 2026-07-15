@@ -1,3 +1,3 @@
 state: filled
 fill_ratio: 1.0000
-bbox: 530, 2173, 596, 2236
+bbox: 676, 2277, 741, 2341
