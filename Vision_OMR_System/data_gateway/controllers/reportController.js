@@ -448,8 +448,8 @@ export async function getNextRosterUsn(req, res) {
     if (sRes.rows.length === 0) {
       return res.status(404).json({ error: 'Session not found' });
     }
-    const { roster, use_roster_order } = sRes.rows[0];
-    if (!use_roster_order || !roster) {
+    const { roster } = sRes.rows[0];
+    if (!roster) {
       return res.json({ next_usn: null });
     }
     const rosterList = typeof roster === 'string' ? JSON.parse(roster) : roster;

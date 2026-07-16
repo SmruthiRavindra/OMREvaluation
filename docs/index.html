@@ -6,6 +6,11 @@
   <title>Vision OMR — Testing Dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
+    @keyframes scanLine {
+      0% { top: 0%; }
+      50% { top: 100%; }
+      100% { top: 0%; }
+    }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
@@ -561,6 +566,15 @@
             <div id="webcamModeContainer" style="display: none; text-align: center; position: relative; max-width: 600px; margin: 0 auto 16px auto;">
               <video id="webcamVideo" autoplay playsinline style="width: 100%; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
               <img id="webcamRenderImage" style="width: 100%; height: auto; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
+              
+              <!-- Scanner overlay target guide -->
+              <div id="webcamScanGuide" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 3px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius); pointer-events: none; box-sizing: border-box; display: block; z-index: 5;">
+                <div style="position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-top: 4px solid #3b82f6; border-left: 4px solid #3b82f6;"></div>
+                <div style="position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-top: 4px solid #3b82f6; border-right: 4px solid #3b82f6;"></div>
+                <div style="position: absolute; bottom: 12px; left: 12px; width: 24px; height: 24px; border-bottom: 4px solid #3b82f6; border-left: 4px solid #3b82f6;"></div>
+                <div style="position: absolute; bottom: 12px; right: 12px; width: 24px; height: 24px; border-bottom: 4px solid #3b82f6; border-right: 4px solid #3b82f6;"></div>
+                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, transparent, #3b82f6, transparent); box-shadow: 0 0 8px #3b82f6; animation: scanLine 2s linear infinite;"></div>
+              </div>
               
               <!-- Glassmorphic HUD overlay -->
               <div id="webcamHudCard" style="display: none; position: absolute; top: 16px; right: 16px; width: 220px; padding: 14px; border-radius: 12px; background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 2px solid rgba(34, 197, 94, 0.4); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.6); text-align: left; font-family: system-ui, -apple-system, sans-serif; color: #fff; z-index: 10; pointer-events: none; transition: all 0.3s ease;">
@@ -1119,12 +1133,11 @@
           const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
           if (useRosterOrder) {
             try {
-              const uResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/next-usn`);
-              const uData = await uResp.json();
-              if (uData && uData.next_usn) {
-                resultData.usn = uData.next_usn;
-                document.getElementById('usnInput').value = uData.next_usn;
-                document.getElementById('modalUsnInput').value = uData.next_usn;
+              const nextUsn = await getNextRosterUsnFallback(sessionId);
+              if (nextUsn) {
+                resultData.usn = nextUsn;
+                document.getElementById('usnInput').value = nextUsn;
+                document.getElementById('modalUsnInput').value = nextUsn;
               }
             } catch(e) { console.warn(e); }
           }
@@ -1881,6 +1894,148 @@
       uploadModeContainer.style.display = 'none';
     });
     
+    async function getNextRosterUsnFallback(sessionId) {
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/next-usn`);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && data.next_usn) {
+            return data.next_usn;
+          }
+        }
+      } catch (e) {
+        console.warn('Server next-usn fetch failed, using client-side fallback:', e);
+      }
+      try {
+        const rosterStr = document.getElementById('rosterUsnsInput').value;
+        const absenteesStr = document.getElementById('absentUsnsInput').value;
+        const roster = rosterStr.split(/[\n,\t\r]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        const absentees = absenteesStr.split(/[\n,\t\r]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+        const activeRoster = roster.filter(u => !absentees.includes(u));
+        if (activeRoster.length === 0) return null;
+        let savedCount = 0;
+        try {
+          const countResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/pending-count`);
+          if (countResp.ok) {
+            const cData = await countResp.json();
+            savedCount = cData.submitted_students || 0;
+          }
+        } catch(e) {}
+        if (savedCount < activeRoster.length) {
+          return activeRoster[savedCount];
+        }
+      } catch(e) {
+        console.warn('Client-side fallback failed:', e);
+      }
+      return null;
+    }
+
+    function wsMessageHandler(event) {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.filled_count > 0 && !window._webcamFrozen) {
+          const sessionId = sessionIdInput.value.trim() || 'default';
+          window._webcamFrozen = true;
+          window._frozenResult = data;
+          resultData = data;
+          stopScanning();
+          if (ws) { ws.close(); ws = null; }
+          document.getElementById('webcamFreezeBar').style.display = 'block';
+          document.getElementById('webcamScanGuide').style.display = 'none';
+          webcamStatus.textContent = '✅ Scan Frozen.';
+          webcamStatus.style.color = 'var(--green)';
+          if (data.annotated_image_b64) {
+            webcamVideo.style.display = 'none';
+            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+            webcamRenderImage.style.display = 'block';
+          }
+          
+          const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
+          if (useRosterOrder) {
+            getNextRosterUsnFallback(sessionId)
+              .then(nextUsn => {
+                if (nextUsn) {
+                  resultData.usn = nextUsn;
+                  document.getElementById('usnInput').value = nextUsn;
+                  document.getElementById('modalUsnInput').value = nextUsn;
+                }
+                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
+                if (data.score_report) {
+                  hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+                  hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+                  hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+                  hudIncorrect.textContent = data.score_report.incorrect;
+                  const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+                  hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+                  hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+                  hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+                  hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+                }
+                webcamHudCard.style.display = 'block';
+                renderResults(resultData);
+              })
+              .catch(e => {
+                console.warn(e);
+                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
+                if (data.score_report) {
+                  hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+                  hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+                  hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+                  hudIncorrect.textContent = data.score_report.incorrect;
+                  const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+                  hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+                  hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+                  hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+                  hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+                }
+                webcamHudCard.style.display = 'block';
+                renderResults(resultData);
+              });
+          } else {
+            hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
+            if (data.score_report) {
+              hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+              hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+              hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+              hudIncorrect.textContent = data.score_report.incorrect;
+              const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+              hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+              hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+              hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+              hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+            }
+            webcamHudCard.style.display = 'block';
+            renderResults(resultData);
+          }
+          return;
+        }
+        if (!window._webcamFrozen) {
+          resultData = data;
+          if (data.annotated_image_b64) {
+            webcamVideo.style.display = 'none';
+            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+            webcamRenderImage.style.display = 'block';
+          }
+        }
+      } catch (e) {
+        console.error("Error parsing websocket frame", e);
+      }
+    }
+
+    function wsErrorHandler(err) {
+      if (!window._webcamFrozen) {
+        webcamStatus.textContent = '❌ Connection error.';
+        webcamStatus.style.color = 'var(--red)';
+      }
+    }
+
+    function wsCloseHandler() {
+      if (!window._webcamFrozen) {
+        webcamStatus.textContent = 'Tunnel closed.';
+        webcamStatus.style.color = 'var(--text-secondary)';
+      }
+    }
+
     startWebcamBtn.addEventListener('click', async () => {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({
@@ -1902,97 +2057,9 @@
           startScanning();
         };
         
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            
-            // Freeze if we found a valid sheet and are not currently frozen
-            if (data.filled_count > 0 && !window._webcamFrozen) {
-              const sessionId = sessionIdInput.value.trim() || 'default';
-              window._webcamFrozen = true;
-              window._frozenResult = data;
-              resultData = data;
-              
-              // Stop sending frames and close WS tunnel
-              stopScanning();
-              if (ws) {
-                ws.close();
-                ws = null;
-              }
-              
-              // Show freeze confirmation UI
-              document.getElementById('webcamFreezeBar').style.display = 'block';
-              webcamStatus.textContent = '✅ Scan Frozen.';
-              webcamStatus.style.color = 'var(--green)';
-              
-              // Display annotated frame directly in the camera slot instead of the video element
-              if (data.annotated_image_b64) {
-                webcamVideo.style.display = 'none';
-                webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-                webcamRenderImage.style.display = 'block';
-              }
-              
-              // Fetch next roster USN if Match by Scan Order is enabled
-              const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
-              if (useRosterOrder) {
-                fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/next-usn`)
-                  .then(r => r.json())
-                  .then(sessionData => {
-                    if (sessionData && sessionData.next_usn) {
-                      const nextUsn = sessionData.next_usn;
-                      resultData.usn = nextUsn;
-                      document.getElementById('usnInput').value = nextUsn;
-                      document.getElementById('modalUsnInput').value = nextUsn;
-                      hudUsn.textContent = nextUsn;
-                    }
-                    renderResults(resultData);
-                  })
-                  .catch(e => {
-                    console.warn('Failed to fetch next USN:', e);
-                    renderResults(resultData);
-                  });
-              } else {
-                renderResults(resultData);
-              }
-              
-              // Update HUD overlay elements
-              if (data.score_report) {
-                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
-                hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
-                hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
-                hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
-                hudIncorrect.textContent = data.score_report.incorrect;
-                
-                const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
-                if (hasReview) {
-                  hudReviewStatus.textContent = '⚠️ REVIEW REQUIRED';
-                  hudReviewStatus.style.background = 'rgba(239, 68, 68, 0.15)';
-                  hudReviewStatus.style.color = '#f87171';
-                  hudReviewStatus.style.borderColor = 'rgba(239, 68, 68, 0.2)';
-                } else {
-                  hudReviewStatus.textContent = '🟢 STATUS: OK';
-                  hudReviewStatus.style.background = 'rgba(34, 197, 94, 0.15)';
-                  hudReviewStatus.style.color = '#4ade80';
-                  hudReviewStatus.style.borderColor = 'rgba(34, 197, 94, 0.2)';
-                }
-              }
-              webcamHudCard.style.display = 'block';
-              return;
-            }
-            
-            // Normal live update flow (do not render results below the fold to keep clean)
-            if (!window._webcamFrozen) {
-              resultData = data;
-              if (data.annotated_image_b64) {
-                webcamVideo.style.display = 'none';
-                webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-                webcamRenderImage.style.display = 'block';
-              }
-            }
-          } catch (e) {
-            console.error("Error parsing websocket frame", e);
-          }
-        };
+        ws.onmessage = wsMessageHandler;
+        ws.onerror = wsErrorHandler;
+        ws.onclose = wsCloseHandler;
         
         ws.onerror = (err) => {
           if (!window._webcamFrozen) {
@@ -2025,6 +2092,7 @@
       webcamRenderImage.style.display = 'none';
       webcamRenderImage.src = '';
       webcamVideo.style.display = 'block';
+      document.getElementById('webcamScanGuide').style.display = 'block';
       webcamHudCard.style.display = 'none';
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -2049,6 +2117,7 @@
       webcamRenderImage.style.display = 'none';
       webcamRenderImage.src = '';
       webcamVideo.style.display = 'block';
+      document.getElementById('webcamScanGuide').style.display = 'block';
       webcamHudCard.style.display = 'none';
       webcamStatus.textContent = 'Restarting scan...';
       webcamStatus.style.color = 'var(--text-secondary)';
