@@ -1124,6 +1124,7 @@
       if (!selectedFiles.length) return;
 
       const isBatch = selectedFiles.length > 1 || selectedFiles[0].type === 'application/pdf';
+      const sessionId = sessionIdInput.value.trim() || 'default';
 
       evaluateBtn.disabled = true;
       evaluateBtn.innerHTML = '<div class="spinner" style="width:18px;height:18px;border-width:2px;margin:0 8px 0 0;"></div> Processing…';
@@ -2162,8 +2163,14 @@
                       document.getElementById('modalUsnInput').value = nextUsn;
                       hudUsn.textContent = nextUsn;
                     }
+                    renderResults(resultData);
                   })
-                  .catch(e => console.warn('Failed to fetch next USN:', e));
+                  .catch(e => {
+                    console.warn('Failed to fetch next USN:', e);
+                    renderResults(resultData);
+                  });
+              } else {
+                renderResults(resultData);
               }
               
               // Update HUD overlay elements

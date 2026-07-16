@@ -1101,7 +1101,8 @@
           // Standard single image flow
           const formData = new FormData();
           formData.append('file', selectedFiles[0]);
-          formData.append('session_id', sessionIdInput.value.trim() || 'default');
+          const sessionId = sessionIdInput.value.trim() || 'default';
+          formData.append('session_id', sessionId);
           formData.append('questions_per_column', '15');
           formData.append('num_columns', '2');
           formData.append('options', 'ABCD');
@@ -1942,8 +1943,14 @@
                       document.getElementById('modalUsnInput').value = nextUsn;
                       hudUsn.textContent = nextUsn;
                     }
+                    renderResults(resultData);
                   })
-                  .catch(e => console.warn('Failed to fetch next USN:', e));
+                  .catch(e => {
+                    console.warn('Failed to fetch next USN:', e);
+                    renderResults(resultData);
+                  });
+              } else {
+                renderResults(resultData);
               }
               
               // Update HUD overlay elements

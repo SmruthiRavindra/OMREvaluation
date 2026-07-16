@@ -120,19 +120,25 @@ def _find_sheet_corners(edges: np.ndarray) -> np.ndarray | None:
     
     h_f, w_f = edges.shape[:2]
     total_area = h_f * w_f
-    min_area = total_area * 0.55  # Sheet must occupy at least 55% of the frame to prevent warping small internal grids
+    min_area = total_area * 0.25  # Reduced threshold to support perspective tilts
     
     for c in contours:
         area = cv2.contourArea(c)
         if area < min_area:
             continue
             
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        hull = cv2.convexHull(c)
+        peri = cv2.arcLength(hull, True)
+        approx = cv2.approxPolyDP(hull, 0.02 * peri, True)
         
         # Check if the contour is a convex 4-corner polygon
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2).astype(np.float32)
+            return _order_points(pts)
+            
+        # Fallback for tilted/distorted sheets: find 4 extreme points of the convex hull
+        if 4 <= len(approx) <= 8:
+            pts = approx.reshape(-1, 2).astype(np.float32)
             return _order_points(pts)
             
     return None
@@ -176,11 +182,17 @@ def _find_sheet_corners_otsu(gray: np.ndarray) -> np.ndarray | None:
         if area < min_area:
             continue
             
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+        hull = cv2.convexHull(c)
+        peri = cv2.arcLength(hull, True)
+        approx = cv2.approxPolyDP(hull, 0.02 * peri, True)
         
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2).astype(np.float32)
+            return _order_points(pts)
+            
+        # Fallback for tilted/distorted sheets: find 4 extreme points of the convex hull
+        if 4 <= len(approx) <= 8:
+            pts = approx.reshape(-1, 2).astype(np.float32)
             return _order_points(pts)
             
     return None
