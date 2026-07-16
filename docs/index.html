@@ -1350,6 +1350,7 @@
         
         scoreSection.style.display = 'block';
         btnShowGrading.style.display = 'block';
+        showGradingTab(); // Auto-show the grading table and override dropdowns
         
         // Fill Grading Table
         gradingTableBody.innerHTML = '';
@@ -1907,6 +1908,7 @@
             
             // Freeze if we found a valid sheet and are not currently frozen
             if (data.filled_count > 0 && !window._webcamFrozen) {
+              const sessionId = sessionIdInput.value.trim() || 'default';
               window._webcamFrozen = true;
               window._frozenResult = data;
               resultData = data;
