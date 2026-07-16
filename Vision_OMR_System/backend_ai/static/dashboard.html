@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Vision OMR — Testing Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Caveat:wght@400;700&family=Great+Vibes&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     @keyframes scanLine {
       0% { top: 0%; }
@@ -14,25 +15,6 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg-primary: #0a0a14;
-      --bg-card: #12121e;
-      --bg-card-hover: #1a1a2e;
-      --bg-input: #1e1e2e;
-      --border: #2a2a3e;
-      --text-primary: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
-      --accent: #6C63FF;
-      --accent-glow: rgba(108, 99, 255, 0.3);
-      --green: #22c55e;
-      --red: #ef4444;
-      --amber: #f59e0b;
-      --gray: #64748b;
-      --radius: 12px;
-      --radius-sm: 8px;
-    }
-
-    html[data-theme="light"] {
       --bg-primary: #f8fafc;
       --bg-card: #ffffff;
       --bg-card-hover: #f1f5f9;
@@ -42,14 +24,31 @@
       --text-secondary: #475569;
       --text-muted: #64748b;
       --accent: #4f46e5;
+      --accent-hover: #4338ca;
       --accent-glow: rgba(79, 70, 229, 0.15);
       --green: #16a34a;
       --red: #dc2626;
       --amber: #d97706;
+      --gray: #64748b;
+      --radius: 12px;
+      --radius-sm: 8px;
     }
 
-    html[data-theme="light"] .header {
-      background: rgba(248, 250, 252, 0.8);
+    html[data-theme="dark"] {
+      --bg-primary: #0a0a14;
+      --bg-card: #12121e;
+      --bg-card-hover: #1a1a2e;
+      --bg-input: #1e1e2e;
+      --border: #2a2a3e;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #6C63FF;
+      --accent-hover: #5a52e0;
+      --accent-glow: rgba(108, 99, 255, 0.3);
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
     }
 
     .theme-toggle-btn {
@@ -87,18 +86,19 @@
       align-items: center;
       justify-content: space-between;
       backdrop-filter: blur(20px);
-      background: rgba(10, 10, 20, 0.8);
+      background: rgba(248, 250, 252, 0.8);
       position: sticky;
       top: 0;
       z-index: 100;
     }
+    html[data-theme="dark"] .header {
+      background: rgba(10, 10, 20, 0.8);
+    }
     .header-left { display: flex; align-items: center; gap: 12px; }
     .logo {
       font-size: 22px;
-      font-weight: 900;
-      background: linear-gradient(135deg, var(--accent), #a78bfa);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      font-weight: 700;
+      color: var(--accent);
       letter-spacing: -0.5px;
     }
     .badge {
@@ -133,7 +133,7 @@
       margin: 0 auto;
       padding: 28px 32px;
       display: grid;
-      grid-template-columns: 380px 1fr;
+      grid-template-columns: 440px 1fr;
       gap: 28px;
     }
 
@@ -216,13 +216,12 @@
       width: 100%;
     }
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent), #8b5cf6);
+      background: var(--accent);
       color: white;
-      box-shadow: 0 4px 15px var(--accent-glow);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     .btn-primary:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 6px 25px var(--accent-glow);
+      background: var(--accent-hover);
     }
     .btn-primary:disabled {
       opacity: 0.5;
@@ -244,11 +243,12 @@
       margin-bottom: 20px;
     }
     .stat-card {
-      background: var(--bg-input);
-      border-radius: var(--radius-sm);
-      padding: 16px;
+      background: var(--bg-card);
+      border-radius: var(--radius);
+      padding: 20px;
       text-align: center;
       border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .stat-value {
       font-size: 28px;
@@ -441,6 +441,25 @@
     }
     .empty-state .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
     .empty-state p { font-size: 14px; }
+    
+    @keyframes laserSweep {
+      0% { top: 0%; }
+      50% { top: 100%; }
+      100% { top: 0%; }
+    }
+    @keyframes curtainSweep {
+      0% { background-position: 0% 0%; }
+      50% { background-position: 0% 100%; }
+      100% { background-position: 0% 0%; }
+    }
+    @keyframes scannerGlow {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.9; }
+    }
+    @keyframes textPulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
   </style>
 </head>
 <body>
@@ -452,6 +471,16 @@
       <span class="badge">Testing Dashboard</span>
     </div>
     <div style="display: flex; align-items: center; gap: 16px;">
+      <span style="font-size: 13px; color: var(--text-muted);">Welcome, <strong id="headerUsername" style="color: var(--text-primary);">Faculty</strong></span>
+      
+      <a href="/admin" id="headerAdminLink" class="theme-toggle-btn" style="padding: 6px 12px; height: 34px; display: none; text-decoration: none; align-items: center; justify-content: center; background: rgba(79, 70, 229, 0.1); border-color: var(--accent); color: var(--accent);">
+        ⚙️ Admin Panel
+      </a>
+
+      <button class="theme-toggle-btn" id="headerLogoutBtn" style="padding: 6px 12px; height: 34px; border-color: #ef4444; color: #ef4444; background: transparent;">
+        🚪 Log Out
+      </button>
+
       <button class="theme-toggle-btn" id="themeToggleBtn" style="padding: 6px 12px; height: 34px;">
         <span id="themeToggleIcon">☀️</span> <span id="themeToggleText">Light Mode</span>
       </button>
@@ -480,32 +509,30 @@
       <div class="card" style="margin-bottom: 20px;" id="step1Card">
         <div class="card-header">1️⃣ Step 1: Session Setup</div>
         <div class="card-body">
-          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
-            <div style="flex: 1;">
+          <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1.2fr 1.5fr 0.8fr; gap: 12px;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
               <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
-            <div style="flex: 1;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Subject</label>
               <input type="text" id="subjectInput" value="Mathematics" placeholder="e.g. Mathematics" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
-            <div style="flex: 1;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Section</label>
-              <input type="text" id="sectionInput" value="A" placeholder="e.g. Section A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+              <input type="text" id="sectionInput" value="A" placeholder="e.g. A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
           </div>
-          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
-            <div style="flex: 1;">
+          <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr; gap: 12px;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students in Class</label>
               <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
             </div>
-          </div>
-          <div style="margin-bottom: 12px; display: flex; gap: 12px;">
-            <div style="flex: 1;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
               <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
             </div>
-            <div style="flex: 1;">
+            <div>
               <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Student Roster (Registered USNs, Comma Separated)</label>
               <textarea id="rosterUsnsInput" placeholder="e.g. 4VV23CS101, 4VV23CS102, 4VV23CS205" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
               <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
@@ -514,7 +541,7 @@
               </div>
             </div>
           </div>
-          <button class="btn btn-primary" id="initSessionBtn" style="background: linear-gradient(135deg, var(--accent), #8b5cf6);">
+          <button class="btn btn-primary" id="initSessionBtn" style="background: var(--accent);">
             🚀 Initialize Session
           </button>
           <div id="initSessionStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
@@ -577,13 +604,18 @@
               <video id="webcamVideo" autoplay playsinline style="width: 100%; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
               <img id="webcamRenderImage" style="width: 100%; height: auto; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
               
-              <!-- Scanner overlay target guide -->
-              <div id="webcamScanGuide" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; border: 3px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius); pointer-events: none; box-sizing: border-box; display: block; z-index: 5;">
-                <div style="position: absolute; top: 12px; left: 12px; width: 24px; height: 24px; border-top: 4px solid #3b82f6; border-left: 4px solid #3b82f6;"></div>
-                <div style="position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-top: 4px solid #3b82f6; border-right: 4px solid #3b82f6;"></div>
-                <div style="position: absolute; bottom: 12px; left: 12px; width: 24px; height: 24px; border-bottom: 4px solid #3b82f6; border-left: 4px solid #3b82f6;"></div>
-                <div style="position: absolute; bottom: 12px; right: 12px; width: 24px; height: 24px; border-bottom: 4px solid #3b82f6; border-right: 4px solid #3b82f6;"></div>
-                <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(to right, transparent, #3b82f6, transparent); box-shadow: 0 0 8px #3b82f6; animation: scanLine 2s linear infinite;"></div>
+              <!-- Clean Viewfinder Guide -->
+              <div id="webcamScanGuide" style="position: absolute; inset: 20px; border: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 8px; pointer-events: none; z-index: 5; transition: border-color 0.2s ease, border-style 0.2s ease;">
+                <!-- Clean white corner brackets -->
+                <div style="position: absolute; top: -2px; left: -2px; width: 16px; height: 16px; border-top: 3px solid #ffffff; border-left: 3px solid #ffffff; border-top-left-radius: 6px;"></div>
+                <div style="position: absolute; top: -2px; right: -2px; width: 16px; height: 16px; border-top: 3px solid #ffffff; border-right: 3px solid #ffffff; border-top-right-radius: 6px;"></div>
+                <div style="position: absolute; bottom: -2px; left: -2px; width: 16px; height: 16px; border-bottom: 3px solid #ffffff; border-left: 3px solid #ffffff; border-bottom-left-radius: 6px;"></div>
+                <div style="position: absolute; bottom: -2px; right: -2px; width: 16px; height: 16px; border-bottom: 3px solid #ffffff; border-right: 3px solid #ffffff; border-bottom-right-radius: 6px;"></div>
+                
+                <!-- Clean status text at the bottom -->
+                <div id="scannerGuideText" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); color: #ffffff; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; background: rgba(15, 23, 42, 0.8); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); text-transform: uppercase; white-space: nowrap;">
+                  Align OMR sheet inside frame
+                </div>
               </div>
               
               <!-- Glassmorphic HUD overlay -->
@@ -627,7 +659,7 @@
                 <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">🎉 Sheet Scanned Successfully!</div>
                 <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">The scan has been frozen. Confirm the score in the HUD card.</div>
                 <div style="display: flex; gap: 8px; justify-content: center;">
-                  <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--green), #059669);">Confirm & Save</button>
+                  <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: var(--green);">Confirm & Save</button>
                   <button class="btn btn-secondary" id="webcamRescanBtn" style="padding: 6px 12px; font-size: 12px; width: auto;">Re-scan</button>
                 </div>
               </div>
@@ -640,7 +672,7 @@
                 <span id="batchProgressPct" style="color: var(--accent); font-weight: 700;">0%</span>
               </div>
               <div style="width: 100%; height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; position: relative;">
-                <div id="batchProgressBar" style="width: 0%; height: 100%; background: linear-gradient(135deg, var(--accent), #8b5cf6); transition: width 0.3s ease;"></div>
+                <div id="batchProgressBar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s ease;"></div>
               </div>
               <div id="batchProgressDetail" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Processed 0/0 sheets</div>
             </div>
@@ -674,10 +706,10 @@
         <div class="card" style="margin-bottom: 20px;">
           <div class="card-header">🗄️ Step 4: Review & Submit</div>
           <div class="card-body">
-            <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, #f59e0b, #d97706); font-size: 13px;">
+            <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: var(--amber); font-size: 13px;">
               ✋ Review & Confirm Before Saving
             </button>
-            <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: linear-gradient(135deg, var(--green), #059669); display: none;">
+            <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: var(--green); display: none;">
               📤 Submit Confirmed Result to DB
             </button>
             <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
@@ -705,153 +737,164 @@
             <div id="dbResultsTable" style="font-size:11px;"></div>
           </div>
         </div>
-      </div>
+      </div> <!-- Close .left-panel -->
 
-      <!-- Stats Card -->
-      <div class="card" id="statsCard" style="display:none;">
-        <div class="card-header">📊 Detection Summary</div>
-        <div class="card-body">
-          <div class="stats-grid">
-            <div class="stat-card">
-              <div class="stat-value green" id="filledCount">0</div>
-              <div class="stat-label">Filled</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value gray" id="emptyCount">0</div>
-              <div class="stat-label">Empty</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-value amber" id="ambigCount">0</div>
-              <div class="stat-label">Ambiguous</div>
-            </div>
-          </div>
+      <!-- ── Right Panel: Results & Image Viewer ───────── -->
+      <div class="right-panel">
 
-          <div class="info-bar">
-            <div class="info-item">
-              ⏱ <span class="info-value" id="processingTime">—</span> ms
+        <!-- Pipeline Visualization -->
+        <div class="card">
+          <div class="card-header">🖼️ Pipeline Visualization</div>
+          <div class="card-body">
+            <div class="image-tabs" id="imageTabs">
+              <button class="image-tab active" data-view="annotated">Annotated</button>
+              <button class="image-tab" data-view="preprocessed">Preprocessed</button>
+              <button class="image-tab" data-view="original">Original</button>
             </div>
-            <div class="info-item">
-              🎯 <span class="info-value" id="totalDetections">—</span> detections
-            </div>
-            <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
-              🆔 Student: 
-              <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
-            </div>
-          </div>
 
-          <!-- Scoring Section -->
-          <div id="scoreSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
-            <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Grading Report</h4>
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-              <div>
-                <div style="font-size: 24px; font-weight: 800; color: var(--green);" id="scorePercent">0%</div>
-                <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Score Percentage</div>
+            <div class="image-display" id="imageDisplay">
+              <div class="placeholder" id="imagePlaceholder">
+                <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">🔬</div>
+                <p>Upload an OMR sheet and run the pipeline<br>to see annotated results here.</p>
               </div>
-              <div style="text-align: right;">
-                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><span id="scoreCorrect">0</span> / <span id="scoreTotal">0</span></div>
-                <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Correct Answers</div>
-              </div>
-            </div>
-            <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0; font-size: 12px;">
-              <div class="stat-card" style="padding: 10px 4px;">
-                <div class="stat-value green" id="scoreCorrectVal" style="font-size: 16px;">0</div>
-                <div class="stat-label" style="font-size: 8px;">Correct</div>
-              </div>
-              <div class="stat-card" style="padding: 10px 4px;">
-                <div class="stat-value red" id="scoreIncorrectVal" style="font-size: 16px;">0</div>
-                <div class="stat-label" style="font-size: 8px;">Incorrect</div>
-              </div>
-              <div class="stat-card" style="padding: 10px 4px;">
-                <div class="stat-value gray" id="scoreUnansweredVal" style="font-size: 16px;">0</div>
-                <div class="stat-label" style="font-size: 8px;">Unanswered</div>
-              </div>
-              <div class="stat-card" style="padding: 10px 4px;">
-                <div class="stat-value amber" id="scoreMultiVal" style="font-size: 16px;">0</div>
-                <div class="stat-label" style="font-size: 8px;">Multi</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
-            ⚠️ Manual review required — some bubbles are ambiguous.
-          </div>
-        </div>
-      </div>
-
-      <!-- Table Card -->
-      <div class="card" id="tableCard" style="display:none;">
-        <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
-          <span id="tableTitle">🔬 Bubble Details</span>
-          <div style="display: flex; gap: 4px; align-items: center;">
-            <button id="saveOverrideBtn" style="display:none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: linear-gradient(135deg, #3b82f6, #6366f1); color: white; border: none; cursor: pointer; font-weight: 600;">💾 Save Override</button>
-            <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
-              <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
-              <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+              <img id="resultImage" style="display:none;" alt="Result">
             </div>
           </div>
         </div>
-        <div class="card-body" style="padding: 0;">
-          <!-- Bubbles Table -->
-          <div class="bubble-table-wrapper" id="bubblesTableWrapper">
-            <table class="bubble-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>State</th>
-                  <th>Fill %</th>
-                  <th>Conf.</th>
-                  <th>Review</th>
-                </tr>
-              </thead>
-              <tbody id="bubbleTableBody"></tbody>
-            </table>
-          </div>
 
-          <!-- Grading Table -->
-          <div class="bubble-table-wrapper" id="gradingTableWrapper" style="display: none;">
-            <table class="bubble-table">
-              <thead>
-                <tr>
-                  <th>Q#</th>
-                  <th>Marked</th>
-                  <th>Correct</th>
-                  <th>Status</th>
-                  <th>Override</th>
-                </tr>
-              </thead>
-              <tbody id="gradingTableBody"></tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Right Panel: Image Viewer ─────────────────── -->
-    <div class="right-panel">
-
-      <div class="card">
-        <div class="card-header">🖼️ Pipeline Visualization</div>
-        <div class="card-body">
-          <div class="image-tabs" id="imageTabs">
-            <button class="image-tab active" data-view="annotated">Annotated</button>
-            <button class="image-tab" data-view="preprocessed">Preprocessed</button>
-            <button class="image-tab" data-view="original">Original</button>
-          </div>
-
-          <div class="image-display" id="imageDisplay">
-            <div class="placeholder" id="imagePlaceholder">
-              <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">🔬</div>
-              <p>Upload an OMR sheet and run the pipeline<br>to see annotated results here.</p>
+        <!-- Stats Card -->
+        <div class="card" id="statsCard" style="display:none;">
+          <div class="card-header">📊 Detection Summary</div>
+          <div class="card-body">
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="stat-value green" id="filledCount">0</div>
+                <div class="stat-label">Filled</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value gray" id="emptyCount">0</div>
+                <div class="stat-label">Empty</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value amber" id="ambigCount">0</div>
+                <div class="stat-label">Ambiguous</div>
+              </div>
             </div>
-            <img id="resultImage" style="display:none;" alt="Result">
+
+            <div class="info-bar">
+              <div class="info-item">
+                ⏱ <span class="info-value" id="processingTime">—</span> ms
+              </div>
+              <div class="info-item">
+                🎯 <span class="info-value" id="totalDetections">—</span> detections
+              </div>
+              <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
+                🆔 Student: 
+                <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
+              </div>
+            </div>
+
+            <!-- Scoring Section -->
+            <div id="scoreSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+              <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Grading Report</h4>
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                <div>
+                  <div style="font-size: 24px; font-weight: 800; color: var(--green);" id="scorePercent">0%</div>
+                  <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Score Percentage</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><span id="scoreCorrect">0</span> / <span id="scoreTotal">0</span></div>
+                  <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Correct Answers</div>
+                </div>
+              </div>
+              <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0; font-size: 12px;">
+                <div class="stat-card" style="padding: 10px 4px;">
+                  <div class="stat-value green" id="scoreCorrectVal" style="font-size: 16px;">0</div>
+                  <div class="stat-label" style="font-size: 8px;">Correct</div>
+                </div>
+                <div class="stat-card" style="padding: 10px 4px;">
+                  <div class="stat-value red" id="scoreIncorrectVal" style="font-size: 16px;">0</div>
+                  <div class="stat-label" style="font-size: 8px;">Incorrect</div>
+                </div>
+                <div class="stat-card" style="padding: 10px 4px;">
+                  <div class="stat-value gray" id="scoreUnansweredVal" style="font-size: 16px;">0</div>
+                  <div class="stat-label" style="font-size: 8px;">Unanswered</div>
+                </div>
+                <div class="stat-card" style="padding: 10px 4px;">
+                  <div class="stat-value amber" id="scoreMultiVal" style="font-size: 16px;">0</div>
+                  <div class="stat-label" style="font-size: 8px;">Multi</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
+              ⚠️ Manual review required — some bubbles are ambiguous.
+            </div>
+            
+            <!-- PDF Export Section -->
+            <div id="pdfExportContainer" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+              <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Export Sheet Report</h4>
+              <div style="display: flex; flex-direction: column; gap: 8px;">
+                <input type="text" id="facultyNameInput" placeholder="Faculty Signature Name" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; font-family: inherit;">
+                <button id="downloadPdfBtn" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                  📥 Download Sheet PDF
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+
+        <!-- Table Card -->
+        <div class="card" id="tableCard" style="display:none;">
+          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
+            <span id="tableTitle">🔬 Bubble Details</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <button id="saveOverrideBtn" style="display:none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: #2563eb; color: white; border: none; cursor: pointer; font-weight: 600;">💾 Save Override</button>
+              <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
+                <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
+                <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+              </div>
+            </div>
+          </div>
+          <div class="card-body" style="padding: 0;">
+            <!-- Bubbles Table -->
+            <div class="bubble-table-wrapper" id="bubblesTableWrapper">
+              <table class="bubble-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>State</th>
+                    <th>Fill %</th>
+                    <th>Conf.</th>
+                    <th>Review</th>
+                  </tr>
+                </thead>
+                <tbody id="bubbleTableBody"></tbody>
+              </table>
+            </div>
+
+            <!-- Grading Table -->
+            <div class="bubble-table-wrapper" id="gradingTableWrapper" style="display: none;">
+              <table class="bubble-table">
+                <thead>
+                  <tr>
+                    <th>Q#</th>
+                    <th>Marked</th>
+                    <th>Correct</th>
+                    <th>Status</th>
+                    <th>Override</th>
+                  </tr>
+                </thead>
+                <tbody id="gradingTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error display -->
+        <div class="alert error" id="errorAlert"></div>
+
       </div>
-
-      <!-- Error display -->
-      <div class="alert error" id="errorAlert"></div>
-
-    </div>
 
     <!-- ── Teacher Confirmation Modal ──────────────── -->
     <div id="confirmModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); overflow-y:auto;">
@@ -878,7 +921,7 @@
           </div>
           <!-- Action buttons -->
           <div style="display:flex; gap:10px; margin-top:20px;">
-            <button id="modalConfirmBtn" class="btn btn-primary" style="flex:2; background:linear-gradient(135deg, var(--green), #059669); font-size:14px; padding:12px;">✅ Confirm & Approve</button>
+            <button id="modalConfirmBtn" class="btn btn-primary" style="flex:2; background: var(--green); font-size:14px; padding:12px;">✅ Confirm & Approve</button>
             <button id="modalCancelBtn" class="btn btn-secondary" style="flex:1; font-size:14px; padding:12px;">Cancel</button>
           </div>
         </div>
@@ -892,6 +935,59 @@
       ? 'https://omrevaluation-2.onrender.com'
       : `http://${window.location.hostname}:3000`;
     const WEBSOCKET_BACKEND_URL = 'wss://omrevaluation-backend.onrender.com'; // Configure this to your production FastAPI backend URL for live webcam scanning
+
+    // Enforce authentication check at startup
+    const token = localStorage.getItem('session_token');
+    const userRole = localStorage.getItem('user_role');
+    const username = localStorage.getItem('username');
+
+    if (!token || (userRole !== 'faculty' && userRole !== 'admin')) {
+      localStorage.clear();
+      window.location.href = '/login';
+    }
+
+    // Intercept all fetch calls to add the Authorization header
+    const originalFetch = window.fetch;
+    window.fetch = function (url, options = {}) {
+      if (token) {
+        options.headers = options.headers || {};
+        if (options.headers instanceof Headers) {
+          options.headers.set('Authorization', `Bearer ${token}`);
+        } else if (Array.isArray(options.headers)) {
+          const hasAuth = options.headers.some(h => h[0].toLowerCase() === 'authorization');
+          if (!hasAuth) {
+            options.headers.push(['Authorization', `Bearer ${token}`]);
+          }
+        } else {
+          if (!options.headers['Authorization'] && !options.headers['authorization']) {
+            options.headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
+      }
+      return originalFetch(url, options);
+    };
+
+    // Helper to build authenticated WebSocket URLs
+    function getWebSocketUrl() {
+      return GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate?token=' + encodeURIComponent(token || '');
+    }
+
+    // Initialize header navigation UI based on auth state
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('headerUsername').textContent = username || 'Faculty';
+      if (userRole === 'admin') {
+        document.getElementById('headerAdminLink').style.display = 'inline-flex';
+      }
+      document.getElementById('headerLogoutBtn').addEventListener('click', async () => {
+        try {
+          await fetch(`${GATEWAY_URL}/api/auth/logout`, {
+            method: 'POST'
+          });
+        } catch (_) {}
+        localStorage.clear();
+        window.location.href = '/login';
+      });
+    });
     
     // Dynamically display the active IP/hostname in the header status bar
     document.getElementById('apiUrl').textContent = window.location.host;
@@ -1485,7 +1581,40 @@
     function wsMessageHandler(event) {
       try {
         const data = JSON.parse(event.data);
-        if (data.filled_count > 0 && !window._webcamFrozen) {
+        
+        // Backpressure control: unblock loop to send next frame
+        readyForNextFrame = true;
+        
+        // Dynamically update document mask guide border and status text based on alignment
+        const guide = document.getElementById('webcamScanGuide');
+        const guideText = document.getElementById('scannerGuideText');
+        if (data.aligned) {
+          alignedFramesCount++;
+          if (guide) {
+            guide.style.borderColor = '#22c55e'; // solid green
+            guide.style.borderStyle = 'solid';
+            guide.style.boxShadow = '0 0 15px rgba(34, 197, 94, 0.4)';
+          }
+          if (guideText) {
+            guideText.textContent = `Sheet Aligned — Hold steady (${alignedFramesCount}/3)`;
+            guideText.style.color = '#4ade80';
+            guideText.style.borderColor = 'rgba(34, 197, 94, 0.3)';
+          }
+        } else {
+          alignedFramesCount = 0; // Reset counter if alignment is lost
+          if (guide) {
+            guide.style.borderColor = 'rgba(255, 255, 255, 0.5)'; // dashed white
+            guide.style.borderStyle = 'dashed';
+            guide.style.boxShadow = 'none';
+          }
+          if (guideText) {
+            guideText.textContent = 'Align OMR sheet inside frame';
+            guideText.style.color = '#ffffff';
+            guideText.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+          }
+        }
+
+        if (data.aligned && alignedFramesCount >= 3 && data.filled_count > 0 && !window._webcamFrozen) {
           const sessionId = sessionIdInput.value.trim() || 'default';
           window._webcamFrozen = true;
           window._frozenResult = data;
@@ -1560,14 +1689,6 @@
             renderResults(resultData);
           }
           return;
-        }
-        if (!window._webcamFrozen) {
-          resultData = data;
-          if (data.annotated_image_b64) {
-            webcamVideo.style.display = 'none';
-            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
-            webcamRenderImage.style.display = 'block';
-          }
         }
       } catch(e) { console.error('WS parse error', e); }
     }
@@ -2178,6 +2299,8 @@
     let ws = null;
     let scanInterval = null;
     let isScanning = false;
+    let alignedFramesCount = 0;
+    window._currentAssignedUsn = null;
     
     // Tab switching
     tabUploadMode.addEventListener('click', () => {
@@ -2197,6 +2320,13 @@
     
     startWebcamBtn.addEventListener('click', async () => {
       try {
+        const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+        if (document.getElementById('useRosterOrderCheckbox').checked) {
+          window._currentAssignedUsn = await getNextRosterUsnFallback(sessionId);
+        } else {
+          window._currentAssignedUsn = null;
+        }
+
         localStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment', width: 640, height: 480 }
         });
@@ -2207,7 +2337,7 @@
         webcamStatus.style.color = 'var(--text-secondary)';
         
         // Initialize WebSocket
-        let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
+        let wsUrl = getWebSocketUrl();
         ws = new WebSocket(wsUrl);
         
         ws.onopen = () => {
@@ -2294,10 +2424,10 @@
         });
         if (resp.ok) {
           btn.textContent = '✅ Overrides Saved!';
-          btn.style.background = 'linear-gradient(135deg, var(--green), #059669)';
+          btn.style.background = 'var(--green)';
           setTimeout(() => {
             btn.textContent = '💾 Save Override';
-            btn.style.background = 'linear-gradient(135deg, #3b82f6, #6366f1)';
+            btn.style.background = '#2563eb';
             btn.disabled = false;
           }, 2500);
           await fetchPendingCount();
@@ -2405,7 +2535,7 @@
       webcamStatus.textContent = 'Restarting scan...';
       webcamStatus.style.color = 'var(--text-secondary)';
       // Reconnect WebSocket and resume scanning
-      let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
+      let wsUrl = getWebSocketUrl();
       ws = new WebSocket(wsUrl);
       ws.onopen = () => { webcamStatus.textContent = 'Streaming live frames...'; webcamStatus.style.color = 'var(--green)'; startScanning(); };
       ws.onmessage = wsMessageHandler;
@@ -2491,14 +2621,22 @@
           // ✅ Don't stop the webcam — keep the annotated frame visible
           await fetchPendingCount();
           
+          if (document.getElementById('useRosterOrderCheckbox').checked) {
+            window._currentAssignedUsn = await getNextRosterUsnFallback(sessionId);
+          }
+          
           // Replace freeze bar with a saved confirmation bar
           const freezeBar = document.getElementById('webcamFreezeBar');
           freezeBar.innerHTML = `
             <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">✅ Saved — USN: ${currentUsn} | Score: ${score_percent.toFixed(1)}%</div>
             <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">Annotated sheet shown below. Click Scan Next to evaluate another student.</div>
             <div style="display: flex; gap: 8px; justify-content: center;">
-              <button class="btn btn-primary" id="scanNextBtn" style="padding: 6px 14px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--accent), #6366f1);">📷 Scan Next</button>
+              <button class="btn btn-primary" id="scanNextBtn" style="padding: 6px 14px; font-size: 12px; width: auto; background: var(--accent);">📷 Scan Next</button>
+              <button class="btn btn-secondary" id="webcamPdfBtn" style="padding: 6px 14px; font-size: 12px; width: auto; display: flex; align-items: center; gap: 4px;">📥 Download PDF</button>
             </div>`;
+          
+          // Bind PDF button
+          document.getElementById('webcamPdfBtn').addEventListener('click', downloadReportPDF);
           
           // Bind Scan Next
           document.getElementById('scanNextBtn').addEventListener('click', () => {
@@ -2514,7 +2652,7 @@
             webcamStatus.textContent = 'Restarting scan...';
             webcamStatus.style.color = 'var(--text-secondary)';
             // Reconnect WS
-            let wsUrl = GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate';
+            let wsUrl = getWebSocketUrl();
             ws = new WebSocket(wsUrl);
             ws.onopen = () => { webcamStatus.textContent = 'Streaming live frames...'; webcamStatus.style.color = 'var(--green)'; startScanning(); };
             ws.onmessage = wsMessageHandler;
@@ -2525,7 +2663,7 @@
               <div style="font-weight: 700; color: var(--green); font-size: 14px; margin-bottom: 8px;">🎉 Sheet Scanned Successfully!</div>
               <div style="font-size: 12px; color: var(--text-primary); margin-bottom: 12px;">The scan has been frozen. Confirm the score in the HUD card.</div>
               <div style="display: flex; gap: 8px; justify-content: center;">
-                <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: linear-gradient(135deg, var(--green), #059669);">Confirm &amp; Save</button>
+                <button class="btn btn-primary" id="webcamConfirmSaveBtn" style="padding: 6px 12px; font-size: 12px; width: auto; background: var(--green);">Confirm &amp; Save</button>
                 <button class="btn btn-secondary" id="webcamRescanBtn" style="padding: 6px 12px; font-size: 12px; width: auto;">Re-scan</button>
               </div>`;
             freezeBar.style.display = 'none';
@@ -2550,12 +2688,12 @@
     const themeToggleIcon = document.getElementById('themeToggleIcon');
     const themeToggleText = document.getElementById('themeToggleText');
     
-    const savedTheme = localStorage.getItem('theme') || 'dark';
+    const savedTheme = localStorage.getItem('theme') || 'light';
     document.documentElement.dataset.theme = savedTheme;
     updateThemeUI(savedTheme);
     
     themeToggleBtn.addEventListener('click', () => {
-      const currentTheme = document.documentElement.dataset.theme || 'dark';
+      const currentTheme = document.documentElement.dataset.theme || 'light';
       const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = newTheme;
       localStorage.setItem('theme', newTheme);
@@ -2606,16 +2744,20 @@
       return variance;
     }
 
+    let readyForNextFrame = true;
+
     function startScanning() {
       if (isScanning) return;
       isScanning = true;
       const ctx = webcamCanvas.getContext('2d');
-      const SHARPNESS_THRESHOLD = 25; // Frames below this variance are too blurry
+      const SHARPNESS_THRESHOLD = 30; // Frames below this variance are too blurry (raised for clarity)
       let blurryCount = 0;
+      readyForNextFrame = true;
       
       scanInterval = setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
         if (webcamVideo.readyState < 2) return; // Wait until frame data is ready
+        if (!readyForNextFrame) return; // Wait for previous frame response (backpressure control)
         
         try {
           // Draw video frame onto canvas
@@ -2642,18 +2784,22 @@
           
           // Send payload
           const sessionId = sessionIdInput.value.trim() || 'default';
+          readyForNextFrame = false; // Block until backend replies
           ws.send(JSON.stringify({
             image: dataUrl,
-            session_id: sessionId
+            session_id: sessionId,
+            assigned_usn: window._currentAssignedUsn || null
           }));
         } catch (err) {
           console.error("Failed to capture/send webcam frame:", err);
+          readyForNextFrame = true;
         }
-      }, 150); // ~7 fps — enough for live scanning without spam
+      }, 40); // Run check loop frequently, but throttled by backpressure
     }
     
     function stopScanning() {
       isScanning = false;
+      readyForNextFrame = true;
       if (scanInterval) {
         clearInterval(scanInterval);
         scanInterval = null;
@@ -2662,6 +2808,174 @@
 
     // Initial check on load
     fetchPendingCount();
+
+    // ── PDF Export Feature ───────────────────────────────────
+    async function downloadReportPDF() {
+      if (!resultData) {
+        alert("No evaluated sheet available to export.");
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const facultyName = document.getElementById('facultyNameInput').value.trim() || 'Evaluator';
+      const timestamp = new Date().toLocaleString();
+
+      // 1. Color Palette & Styling Constants
+      const primaryColor = [79, 70, 229]; // Indigo #4F46E5
+      const secondaryColor = [15, 23, 42]; // Slate #0F172A
+      const lightGray = [248, 250, 252]; // Light Slate background #F8FAFC
+      const borderGray = [226, 232, 240]; // Slate-200 border #E2E8F0
+
+      // 2. Draw Header Band
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, 210, 35, 'F');
+
+      // Title
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(20);
+      doc.text('VISION OMR SYSTEM', 15, 18);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text('OFFICIAL EVALUATION & GRADING CERTIFICATE', 15, 25);
+
+      // Decorative Accent
+      doc.setFillColor(167, 139, 250); // Violet #A78BFA
+      doc.rect(0, 35, 210, 2, 'F');
+
+      // 3. Document Details Box (Grid style)
+      let y = 48;
+      doc.setFillColor(...lightGray);
+      doc.rect(12, y, 186, 32, 'F');
+      doc.setDrawColor(...borderGray);
+      doc.setLineWidth(0.3);
+      doc.rect(12, y, 186, 32, 'D');
+
+      // Text inside Details Box
+      doc.setTextColor(...secondaryColor);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('SESSION DETAILS', 18, y + 6);
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      const subject = document.getElementById('subjectInput').value.trim() || 'OMR Exam';
+      const section = document.getElementById('sectionInput').value.trim() || 'N/A';
+      const usn = resultData.usn || 'UNKNOWN';
+      
+      doc.text(`Session ID: ${sessionId}`, 18, y + 14);
+      doc.text(`Subject: ${subject}`, 18, y + 20);
+      doc.text(`Section: ${section}`, 18, y + 26);
+
+      // Score badge in the middle
+      const scorePercentVal = resultData.score_report ? resultData.score_report.score_percent.toFixed(2) : 'N/A';
+      const correct = resultData.score_report ? resultData.score_report.correct : 0;
+      const totalQ = resultData.score_report ? resultData.score_report.total_questions : 0;
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text('EVALUATION RESULTS', 105, y + 6);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Student USN: ${usn}`, 105, y + 14);
+      
+      if (resultData.score_report) {
+        doc.text(`Score: ${correct} / ${totalQ} Correct`, 105, y + 20);
+        // Draw big score badge
+        doc.setFillColor(34, 197, 94); // Green badge
+        doc.rect(155, y + 10, 36, 14, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(`${scorePercentVal}%`, 173, y + 19, { align: 'center' });
+      } else {
+        doc.text('No answer key graded', 105, y + 20);
+      }
+
+      // Restore defaults
+      doc.setTextColor(...secondaryColor);
+      doc.setFontSize(10);
+      
+      // 4. Render OMR Sheet Image
+      y += 40;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('ANNOTATED OMR SHEET VIEW', 15, y);
+      
+      // Draw border for image
+      const imgWidth = 100;
+      const imgHeight = 133;
+      const imgX = 55; // centered
+      const imgY = y + 4;
+      doc.rect(imgX - 1, imgY - 1, imgWidth + 2, imgHeight + 2, 'D');
+
+      if (resultData.annotated_image_b64) {
+        const imgData = 'data:image/jpeg;base64,' + resultData.annotated_image_b64;
+        doc.addImage(imgData, 'JPEG', imgX, imgY, imgWidth, imgHeight);
+      } else {
+        // Draw placeholder
+        doc.setFillColor(240, 240, 240);
+        doc.rect(imgX, imgY, imgWidth, imgHeight, 'F');
+        doc.setTextColor(150, 150, 150);
+        doc.text('No Image Available', imgX + imgWidth/2, imgY + imgHeight/2, { align: 'center' });
+      }
+
+      // 5. Verification Footer
+      const footerY = 245;
+      doc.setDrawColor(...borderGray);
+      doc.line(15, footerY, 195, footerY);
+
+      doc.setTextColor(...secondaryColor);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(`Report Generated: ${timestamp}`, 15, footerY + 6);
+      doc.text(`Vision OMR Platform Secure Verification Code: OMR-${Math.random().toString(36).substr(2, 9).toUpperCase()}`, 15, footerY + 11);
+
+      // Signature Block
+      const sigX = 145;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.text('Faculty Signature', sigX, footerY + 6);
+
+      // Draw cursive signature text using Caveat on canvas
+      const sigCanvas = document.createElement('canvas');
+      sigCanvas.width = 180;
+      sigCanvas.height = 50;
+      const sigCtx = sigCanvas.getContext('2d');
+      
+      sigCtx.fillStyle = '#ffffff';
+      sigCtx.fillRect(0, 0, 180, 50);
+      
+      sigCtx.font = "italic 24px 'Caveat', cursive, serif";
+      sigCtx.fillStyle = '#1e1b4b'; // Deep Indigo
+      sigCtx.fillText(facultyName, 10, 32);
+      
+      // Draw underline flourish
+      sigCtx.strokeStyle = '#4f46e5';
+      sigCtx.lineWidth = 1.5;
+      sigCtx.beginPath();
+      sigCtx.moveTo(10, 38);
+      sigCtx.quadraticCurveTo(50, 42, 100, 38);
+      sigCtx.stroke();
+      
+      const sigImgData = sigCanvas.toDataURL('image/png');
+      doc.addImage(sigImgData, 'PNG', sigX, footerY + 8, 45, 12.5);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(facultyName, sigX, footerY + 23);
+
+      doc.save(`OMR_Evaluation_Report_${usn}.pdf`);
+    }
+
+    document.getElementById('downloadPdfBtn').addEventListener('click', downloadReportPDF);
 
   </script>
 </body>

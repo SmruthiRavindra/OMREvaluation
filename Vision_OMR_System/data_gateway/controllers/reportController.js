@@ -51,6 +51,20 @@ export async function createSession(req, res) {
   }
 }
 
+export async function listSessions(req, res) {
+  try {
+    const result = await query(
+      `SELECT id, subject, section, exam_date, total_questions, expected_students, roster, use_roster_order, created_at 
+       FROM exam_sessions 
+       ORDER BY created_at DESC`
+    );
+    return res.json({ rows: result.rows });
+  } catch (err) {
+    console.error('[listSessions] error:', err.message);
+    return res.status(500).json({ error: 'Failed to retrieve sessions' });
+  }
+}
+
 // ── Student Results ────────────────────────────────────────────────────────
 
 export async function submitStudentResult(req, res) {

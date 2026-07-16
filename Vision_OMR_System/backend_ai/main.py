@@ -1058,6 +1058,31 @@ async def dashboard():
     return html_path.read_text(encoding="utf-8")
 
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Serve the login HTML page."""
+    html_path = _STATIC_DIR / "login.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Login page not found.")
+    return html_path.read_text(encoding="utf-8")
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_page():
+    """Serve the admin HTML page."""
+    html_path = _STATIC_DIR / "admin.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Admin page not found.")
+    return html_path.read_text(encoding="utf-8")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Root redirects to /dashboard."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard")
+
+
 # ── Live Webcam WebSocket ────────────────────────────────────────────────────
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -1081,6 +1106,8 @@ async def websocket_evaluate(websocket: WebSocket):
             if not img_b64:
                 continue
                 
+            assigned_usn = payload.get("assigned_usn")
+            
             # Decode base64 bytes
             if "," in img_b64:
                 img_b64 = img_b64.split(",")[1]
@@ -1126,7 +1153,10 @@ async def websocket_evaluate(websocket: WebSocket):
             
             # Extract USN
             usn_value = None
-            if usn_dets:
+            if assigned_usn:
+                usn_value = assigned_usn
+                last_valid_usn = assigned_usn
+            elif usn_dets:
                 det = usn_dets[0]
                 if last_valid_usn and last_valid_usn != "UNKNOWN":
                     usn_value = last_valid_usn

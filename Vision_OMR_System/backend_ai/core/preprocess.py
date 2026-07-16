@@ -136,11 +136,6 @@ def _find_sheet_corners(edges: np.ndarray) -> np.ndarray | None:
             pts = approx.reshape(4, 2).astype(np.float32)
             return _order_points(pts)
             
-        # Fallback for tilted/distorted sheets: find 4 extreme points of the convex hull
-        if 4 <= len(approx) <= 8:
-            pts = approx.reshape(-1, 2).astype(np.float32)
-            return _order_points(pts)
-            
     return None
 
 
@@ -188,11 +183,6 @@ def _find_sheet_corners_otsu(gray: np.ndarray) -> np.ndarray | None:
         
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2).astype(np.float32)
-            return _order_points(pts)
-            
-        # Fallback for tilted/distorted sheets: find 4 extreme points of the convex hull
-        if 4 <= len(approx) <= 8:
-            pts = approx.reshape(-1, 2).astype(np.float32)
             return _order_points(pts)
             
     return None

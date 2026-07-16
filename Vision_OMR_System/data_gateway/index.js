@@ -24,6 +24,8 @@ import multer    from 'multer';
 import cors      from 'cors';
 import helmet    from 'helmet';
 import morgan    from 'morgan';
+import path      from 'path';
+import { fileURLToPath } from 'url';
 import 'dotenv/config';
 
 import {
@@ -39,6 +41,7 @@ import {
 
 import {
   createSession,
+  listSessions,
   submitStudentResult,
   getSessionResults,
   downloadReport,
@@ -49,17 +52,34 @@ import {
 } from './controllers/reportController.js';
 import { runMigrations } from './config/migrator.js';
 import pool from './config/database.js';
+import {
+  login,
+  logout,
+  verifyAuth,
+  isAdmin,
+  listUsers,
+  createUser,
+  deleteUser,
+  getAdminStats
+} from './controllers/authController.js';
 
 // ── App setup ──────────────────────────────────────────────────────────────
 const app  = express();
 const PORT = Number(process.env.PORT ?? 3000);
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const staticPath = path.join(__dirname, '../backend_ai/static');
+
 // ── Middleware ─────────────────────────────────────────────────────────────
-app.use(helmet({ crossOriginResourcePolicy: false })); // security headers (allow CORS)
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false })); // security headers (allow CORS)
 app.use(cors());           // allow all origins (restrict in production)
 app.use(morgan('dev'));    // HTTP request logging
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve static frontend files from Gateway
+app.use(express.static(staticPath));
 
 // ── File upload (memory storage; forwarded directly to FastAPI) ────────────
 const upload = multer({
@@ -79,16 +99,52 @@ const upload = multer({
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'data-gateway' }));
 
-app.post('/api/evaluate', upload.single('file'), evaluateSheet);
-app.post('/api/submit',   submitResults);
-app.get('/api/history',   getHistory);
+// Middleware to disable caching for static HTML views so updated CSP headers apply instantly
+const noCache = (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+};
+
+// Page Routes serving client-side dynamic interfaces
+app.get('/login', noCache, (req, res) => {
+  res.sendFile(path.join(staticPath, 'login.html'));
+});
+
+app.get('/dashboard', noCache, (req, res) => {
+  res.sendFile(path.join(staticPath, 'dashboard.html'));
+});
+
+app.get('/admin', noCache, (req, res) => {
+  res.sendFile(path.join(staticPath, 'admin.html'));
+});
+
+app.get('/', (req, res) => {
+  res.redirect('/dashboard');
+});
+
+// Auth Portal Endpoints
+app.post('/api/auth/login', login);
+app.post('/api/auth/logout', logout);
+
+// User Management (Admin Only)
+app.get('/api/users', verifyAuth, isAdmin, listUsers);
+app.post('/api/users', verifyAuth, isAdmin, createUser);
+app.delete('/api/users/:id', verifyAuth, isAdmin, deleteUser);
+app.get('/api/admin/stats', verifyAuth, isAdmin, getAdminStats);
+
+// Protected Data Evaluation/Submission Routes
+app.post('/api/evaluate', verifyAuth, upload.single('file'), evaluateSheet);
+app.post('/api/submit',   verifyAuth, submitResults);
+app.get('/api/history',   verifyAuth, getHistory);
 
 // Separated frontend deployment FastAPI proxies
-app.post('/answer-key', proxyAnswerKey);
-app.post('/re-score', proxyReScore);
-app.post('/debug/evaluate', upload.single('file'), proxyDebugEvaluate);
+app.post('/answer-key', verifyAuth, proxyAnswerKey);
+app.post('/re-score', verifyAuth, proxyReScore);
+app.post('/debug/evaluate', verifyAuth, upload.single('file'), proxyDebugEvaluate);
 
-app.get('/debug/db-status', async (_req, res) => {
+app.get('/debug/db-status', verifyAuth, async (_req, res) => {
   try {
     const tablesResult = await pool.query(`
       SELECT table_name 
@@ -118,18 +174,19 @@ app.get('/debug/db-status', async (_req, res) => {
 });
 
 // Async Batch Ingestion Routes (V1)
-app.post('/api/v1/evaluate', upload.array('files'), evaluateBatchV1);
-app.get('/api/v1/tasks/:taskId', getTaskStatusV1);
+app.post('/api/v1/evaluate', verifyAuth, upload.array('files'), evaluateBatchV1);
+app.get('/api/v1/tasks/:taskId', verifyAuth, getTaskStatusV1);
 
-// Session & Reports
-app.post('/api/sessions', createSession);
-app.get('/api/sessions/:sessionId', getSession);
-app.get('/api/sessions/:sessionId/pending-count', getPendingCount);
-app.get('/api/sessions/:sessionId/next-usn', getNextRosterUsn);
-app.post('/api/results', submitStudentResult);
-app.post('/api/sessions/:sessionId/absentees', submitAbsentees);
-app.get('/api/sessions/:sessionId/results', getSessionResults);
-app.get('/api/reports/download/:sessionId', downloadReport);
+// Session & Reports (All protected with verifyAuth)
+app.post('/api/sessions', verifyAuth, createSession);
+app.get('/api/sessions', verifyAuth, listSessions);
+app.get('/api/sessions/:sessionId', verifyAuth, getSession);
+app.get('/api/sessions/:sessionId/pending-count', verifyAuth, getPendingCount);
+app.get('/api/sessions/:sessionId/next-usn', verifyAuth, getNextRosterUsn);
+app.post('/api/results', verifyAuth, submitStudentResult);
+app.post('/api/sessions/:sessionId/absentees', verifyAuth, submitAbsentees);
+app.get('/api/sessions/:sessionId/results', verifyAuth, getSessionResults);
+app.get('/api/reports/download/:sessionId', verifyAuth, downloadReport);
 
 // ── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -165,7 +222,29 @@ server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
   
   if (url.pathname === '/ws/evaluate') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
+    const token = url.searchParams.get('token');
+    if (!token) {
+      console.warn('[Gateway WS Proxy] Upgrade rejected: Token query param missing');
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    // Verify token against database
+    pool.query(
+      `SELECT 1 FROM user_sessions s 
+       WHERE s.token = $1 AND s.expires_at > NOW()`,
+      [token]
+    ).then((dbRes) => {
+      if (dbRes.rowCount === 0) {
+        console.warn('[Gateway WS Proxy] Upgrade rejected: Session expired or invalid');
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // Upgrade to websocket if verified
+      wss.handleUpgrade(request, socket, head, (ws) => {
       // Derive backend websocket URL
       let targetWsUrl = FASTAPI_URL.replace(/^http/, 'ws');
       if (!targetWsUrl.endsWith('/ws/evaluate')) {
@@ -222,6 +301,11 @@ server.on('upgrade', (request, socket, head) => {
         console.error('[Gateway WS Proxy] Client error:', err.message);
         backendWs.close(1011, 'Client error');
       });
+      });
+    }).catch((err) => {
+      console.error('[Gateway WS Proxy] Auth DB error during upgrade:', err.message);
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
     });
   } else {
     socket.destroy();
