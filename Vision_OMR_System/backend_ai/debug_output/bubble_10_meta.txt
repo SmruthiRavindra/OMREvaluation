@@ -1,3 +1,7 @@
 state: filled
 fill_ratio: 1.0000
+<<<<<<< Updated upstream
 bbox: 102, 215, 123, 230
+=======
+bbox: 275, 628, 299, 651
+>>>>>>> Stashed changes
