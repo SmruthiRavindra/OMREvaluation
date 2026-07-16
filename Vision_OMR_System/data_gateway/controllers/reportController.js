@@ -492,10 +492,11 @@ export async function deleteSession(req, res) {
   const { sessionId } = req.params;
   try {
     const result = await query("DELETE FROM exam_sessions WHERE id = $1 RETURNING id", [sessionId]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Session not found.' });
-    }
-    return res.json({ message: 'Session deleted successfully.', id: sessionId });
+    return res.json({ 
+      message: 'Session deleted successfully.', 
+      id: sessionId,
+      alreadyDeleted: result.rows.length === 0 
+    });
   } catch (err) {
     console.error('[deleteSession] error:', err.message);
     return res.status(500).json({ error: 'Failed to delete session.' });

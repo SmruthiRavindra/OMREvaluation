@@ -733,10 +733,12 @@
     }
 
     async function deleteSessionHandler(sessionId) {
+      if (window._deletingSession) return;
       if (!confirm(`Are you sure you want to delete session "${sessionId}"? This will permanently delete all student scores associated with it!`)) {
         return;
       }
       try {
+        window._deletingSession = true;
         const response = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -749,6 +751,8 @@
         await fetchSessions(); // Refresh table
       } catch(err) {
         showAlert(`❌ Error: ${err.message}`, true);
+      } finally {
+        window._deletingSession = false;
       }
     }
 
