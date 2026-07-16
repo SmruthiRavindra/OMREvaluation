@@ -841,6 +841,9 @@
       ? 'https://omrevaluation-2.onrender.com'
       : `http://${window.location.hostname}:3000`;
     const WEBSOCKET_BACKEND_URL = 'wss://omrevaluation-backend.onrender.com'; // Configure this to your production FastAPI backend URL for live webcam scanning
+    
+    // Dynamically display the active IP/hostname in the header status bar
+    document.getElementById('apiUrl').textContent = window.location.host;
     let selectedFile = null;
     let selectedFiles = [];
     let pendingCount = 0;
