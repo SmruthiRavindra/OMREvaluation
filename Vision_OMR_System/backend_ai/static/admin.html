@@ -701,6 +701,7 @@
             </td>
             <td>
               <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="downloadExcelReport('${sess.id}')">Excel Report</button>
+              <button class="btn btn-danger" style="padding: 4px 8px; font-size: 11px; background: #dc2626; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; margin-left: 4px;" onclick="deleteSessionHandler('${sess.id}')">Delete</button>
             </td>
           `;
           tbody.appendChild(tr);
@@ -728,6 +729,26 @@
         document.body.removeChild(a);
       } catch(err) {
         showAlert(`Download error: ${err.message}`, true);
+      }
+    }
+
+    async function deleteSessionHandler(sessionId) {
+      if (!confirm(`Are you sure you want to delete session "${sessionId}"? This will permanently delete all student scores associated with it!`)) {
+        return;
+      }
+      try {
+        const response = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const resData = await response.json();
+        if (!response.ok) {
+          throw new Error(resData.error || 'Failed to delete session.');
+        }
+        showAlert('✅ Session deleted successfully.');
+        await fetchSessions(); // Refresh table
+      } catch(err) {
+        showAlert(`❌ Error: ${err.message}`, true);
       }
     }
 

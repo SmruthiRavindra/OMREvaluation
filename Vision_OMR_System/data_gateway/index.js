@@ -48,7 +48,8 @@ import {
   submitAbsentees,
   getSession,
   getPendingCount,
-  getNextRosterUsn
+  getNextRosterUsn,
+  deleteSession
 } from './controllers/reportController.js';
 import { runMigrations } from './config/migrator.js';
 import pool from './config/database.js';
@@ -181,6 +182,7 @@ app.get('/api/v1/tasks/:taskId', verifyAuth, getTaskStatusV1);
 app.post('/api/sessions', verifyAuth, createSession);
 app.get('/api/sessions', verifyAuth, listSessions);
 app.get('/api/sessions/:sessionId', verifyAuth, getSession);
+app.delete('/api/sessions/:sessionId', verifyAuth, isAdmin, deleteSession);
 app.get('/api/sessions/:sessionId/pending-count', verifyAuth, getPendingCount);
 app.get('/api/sessions/:sessionId/next-usn', verifyAuth, getNextRosterUsn);
 app.post('/api/results', verifyAuth, submitStudentResult);
