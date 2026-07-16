@@ -1113,6 +1113,21 @@
           }
           resultData = await resp.json();
           window.batchResults = null; // Reset batch
+          
+          // Fetch next roster USN if Match by Scan Order is enabled
+          const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
+          if (useRosterOrder) {
+            try {
+              const uResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/next-usn`);
+              const uData = await uResp.json();
+              if (uData && uData.next_usn) {
+                resultData.usn = uData.next_usn;
+                document.getElementById('usnInput').value = uData.next_usn;
+                document.getElementById('modalUsnInput').value = uData.next_usn;
+              }
+            } catch(e) { console.warn(e); }
+          }
+          
           renderResults(resultData);
           
           // Increment local pending count and draw banner
@@ -1914,9 +1929,26 @@
                 webcamRenderImage.style.display = 'block';
               }
               
+              // Fetch next roster USN if Match by Scan Order is enabled
+              const useRosterOrder = document.getElementById('useRosterOrderCheckbox').checked;
+              if (useRosterOrder) {
+                fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/next-usn`)
+                  .then(r => r.json())
+                  .then(sessionData => {
+                    if (sessionData && sessionData.next_usn) {
+                      const nextUsn = sessionData.next_usn;
+                      resultData.usn = nextUsn;
+                      document.getElementById('usnInput').value = nextUsn;
+                      document.getElementById('modalUsnInput').value = nextUsn;
+                      hudUsn.textContent = nextUsn;
+                    }
+                  })
+                  .catch(e => console.warn('Failed to fetch next USN:', e));
+              }
+              
               // Update HUD overlay elements
               if (data.score_report) {
-                hudUsn.textContent = data.usn || 'UNKNOWN';
+                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
                 hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
                 hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
                 hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;

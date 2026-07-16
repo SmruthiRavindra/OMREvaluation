@@ -441,3 +441,36 @@ export async function getPendingCount(req, res) {
   }
 }
 
+export async function getNextRosterUsn(req, res) {
+  const { sessionId } = req.params;
+  try {
+    const sRes = await query("SELECT roster, use_roster_order FROM exam_sessions WHERE id = $1", [sessionId]);
+    if (sRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const { roster, use_roster_order } = sRes.rows[0];
+    if (!use_roster_order || !roster) {
+      return res.json({ next_usn: null });
+    }
+    const rosterList = typeof roster === 'string' ? JSON.parse(roster) : roster;
+    if (!Array.isArray(rosterList) || rosterList.length === 0) {
+      return res.json({ next_usn: null });
+    }
+    
+    // Fetch absentees
+    const absRes = await query("SELECT usn FROM student_results WHERE session_id = $1 AND status = 'ABSENT'", [sessionId]);
+    const absentees = absRes.rows.map(r => r.usn);
+    const activeRoster = rosterList.filter(u => !absentees.includes(u));
+    
+    // Fetch count of already saved (non-absent) students
+    const countRes = await query("SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND status != 'ABSENT'", [sessionId]);
+    const savedCount = parseInt(countRes.rows[0]?.count || 0);
+    
+    const nextUsn = savedCount < activeRoster.length ? activeRoster[savedCount] : null;
+    return res.json({ next_usn: nextUsn });
+  } catch (err) {
+    console.error('[getNextRosterUsn] error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch next USN' });
+  }
+}
+

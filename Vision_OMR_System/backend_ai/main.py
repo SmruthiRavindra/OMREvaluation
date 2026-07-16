@@ -392,7 +392,18 @@ def run_batch_evaluation_sync(
             
             clean_img = preprocess_image(content)
             detections = run_yolo_inference(clean_img)
+            
+            # Check for upside-down orientation using USN bounding box
             usn_dets = [d for d in detections if d.class_name == "usn"]
+            if usn_dets:
+                usn_det = usn_dets[0]
+                h_img = clean_img.shape[0]
+                usn_center_y = (usn_det.y1 + usn_det.y2) / 2
+                if usn_center_y > h_img / 2:
+                    clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
+                    detections = run_yolo_inference(clean_img)
+                    usn_dets = [d for d in detections if d.class_name == "usn"]
+                    
             bubble_dets = [d for d in detections if d.class_name != "usn"]
             
             usn_value = None
@@ -861,7 +872,8 @@ async def debug_evaluate(
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
     options: str = Form("ABCD"),
-    roster: Optional[str] = Form(None)
+    roster: Optional[str] = Form(None),
+    assigned_usn: Optional[str] = Form(None)
 ):
     """
     Debug endpoint: runs the full pipeline and returns annotated images
@@ -903,8 +915,8 @@ async def debug_evaluate(
         bubble_dets = [d for d in detections if d.class_name != "usn"]
 
         # Extract USN
-        usn_value = None
-        if usn_dets:
+        usn_value = assigned_usn
+        if not usn_value and usn_dets:
             det = usn_dets[0]
             usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
             if usn_value and roster_list:
