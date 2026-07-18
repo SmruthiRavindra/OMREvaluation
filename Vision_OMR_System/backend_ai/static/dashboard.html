@@ -754,6 +754,11 @@
               <video id="webcamVideo" autoplay playsinline style="width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
               <img id="webcamRenderImage" style="width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
               
+              <!-- Manual Capture Button -->
+              <button id="manualCaptureBtn" style="display: none; position: absolute; top: 16px; left: 16px; z-index: 10; background: var(--accent); color: white; border: none; border-radius: 20px; padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: background 0.2s;">
+                📸 Capture Now
+              </button>
+
               <!-- Clean Viewfinder Guide -->
               <div id="webcamScanGuide" style="display: none; position: absolute; inset: 20px; border: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 8px; pointer-events: none; z-index: 5; transition: border-color 0.2s ease, border-style 0.2s ease;">
                 <!-- Clean white corner brackets -->
@@ -891,10 +896,14 @@
               </button>
               <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
               
+              <button class="btn btn-secondary" id="downloadStudentSheetBtn" style="margin-bottom: 8px; width: 100%; font-size: 11px; border-color: var(--border); display: none;">
+                ⬇️ Download Student Sheet Report (PDF)
+              </button>
               <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-                <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Download Excel</button>
-                <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 Download PDF</button>
+                <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Excel Summary</button>
+                <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 PDF Summary</button>
               </div>
+              <button class="btn btn-secondary" id="downloadDetailedPdfBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📑 PDF Session Report (Detailed with Images)</button>
               <button class="btn btn-secondary" id="viewDbBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📋 View Database Records</button>
               <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
             </div>
@@ -1516,6 +1525,8 @@
       uploadZone.classList.remove('has-file');
       evaluateBtn.disabled = true;
       clearBtn.style.display = 'none';
+      const studentSheetBtn = document.getElementById('downloadStudentSheetBtn');
+      if (studentSheetBtn) studentSheetBtn.style.display = 'none';
       filePreview.style.display = 'none';
       document.querySelector('.upload-icon').style.display = '';
       document.querySelector('.upload-title').style.display = 'block';
@@ -1915,6 +1926,7 @@
     function wsMessageHandler(event) {
       try {
         const data = JSON.parse(event.data);
+        window._lastReceivedFrame = data;
         
         // Backpressure control: unblock loop to send next frame
         readyForNextFrame = true;
@@ -1930,7 +1942,7 @@
             guide.style.boxShadow = '0 0 15px rgba(34, 197, 94, 0.4)';
           }
           if (guideText) {
-            guideText.textContent = `Sheet Aligned — Hold steady (${alignedFramesCount}/3)`;
+            guideText.textContent = `Sheet Aligned — Processing...`;
             guideText.style.color = '#4ade80';
             guideText.style.borderColor = 'rgba(34, 197, 94, 0.3)';
           }
@@ -1948,7 +1960,7 @@
           }
         }
 
-        if (data.aligned && alignedFramesCount >= 3 && data.filled_count > 0 && !window._webcamFrozen) {
+        if (data.aligned && alignedFramesCount >= 1 && data.filled_count > 0 && !window._webcamFrozen) {
           const sessionId = sessionIdInput.value.trim() || 'default';
           window._webcamFrozen = true;
           window._frozenResult = data;
@@ -2044,6 +2056,8 @@
     function renderResults(data) {
       window._resultSaved = false;
       showPage(3);
+      const studentSheetBtn = document.getElementById('downloadStudentSheetBtn');
+      if (studentSheetBtn) studentSheetBtn.style.display = 'block';
       // Stats
       document.getElementById('filledCount').textContent = data.filled_count;
       document.getElementById('emptyCount').textContent = data.empty_count;
@@ -2351,7 +2365,8 @@
             multiple_marked: report.multiple_marked,
             score_percent: report.score_percent,
             per_question: report.per_question,
-            expected_students: expectedStudents
+            expected_students: expectedStudents,
+            annotated_image: item.annotated_image_b64 || null
           };
           
           const resp = await fetch(`${GATEWAY_URL}/api/results`, {
@@ -2465,14 +2480,235 @@
       }
     });
     
+    async function fetchAndDownload(url, filename) {
+      const token = localStorage.getItem('session_token');
+      try {
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || `HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      } catch (err) {
+        alert(`Failed to download report: ${err.message}`);
+      }
+    }
+
     document.getElementById('downloadExcelBtn').addEventListener('click', () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
-      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=excel`, '_blank');
+      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=excel`, `OMR_Report_${sessionId}.xlsx`);
     });
-    
+
     document.getElementById('downloadPdfBtn').addEventListener('click', () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
-      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf`, '_blank');
+      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=false`, `OMR_Report_${sessionId}.pdf`);
+    });
+
+    document.getElementById('downloadDetailedPdfBtn').addEventListener('click', () => {
+      const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=true`, `OMR_Detailed_Report_${sessionId}.pdf`);
+    });
+
+    document.getElementById('manualCaptureBtn').addEventListener('click', () => {
+      const data = window._lastReceivedFrame;
+      if (!data || !data.score_report) {
+        alert("Please hold the OMR sheet steady in front of the camera until it starts detecting options.");
+        return;
+      }
+      
+      window._webcamFrozen = true;
+      window._frozenResult = data;
+      resultData = data;
+      stopScanning();
+      if (ws) { ws.close(); ws = null; }
+      
+      document.getElementById('webcamFreezeBar').style.display = 'block';
+      document.getElementById('webcamScanGuide').style.display = 'none';
+      const captureBtn = document.getElementById('manualCaptureBtn');
+      if (captureBtn) captureBtn.style.display = 'none';
+      webcamStatus.textContent = '✅ Scan Frozen.';
+      webcamStatus.style.color = 'var(--green)';
+      
+      if (data.annotated_image_b64) {
+        webcamVideo.style.display = 'none';
+        webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+        webcamRenderImage.style.display = 'block';
+      }
+      
+      if (data.score_report) {
+        hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+        hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+        hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+        hudIncorrect.textContent = data.score_report.incorrect;
+        const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+        hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+        hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+        hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+        hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+      }
+      webcamHudCard.style.display = 'block';
+      renderResults(resultData);
+    });
+
+    document.getElementById('downloadStudentSheetBtn').addEventListener('click', () => {
+      if (!resultData || !resultData.score_report) {
+        alert("No OMR scan result is currently loaded.");
+        return;
+      }
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const report = resultData.score_report;
+        const usn = document.getElementById('usnInput').value.trim().toUpperCase() || resultData.usn || 'UNKNOWN';
+        const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+        const subject = document.getElementById('subjectInput').value.trim() || 'Evaluation Session';
+        
+        // Page 1: Evaluation Summary
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(20);
+        doc.setTextColor(79, 70, 229); // Indigo
+        doc.text("OMR Student Evaluation Report", 14, 20);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139); // Slate-500
+        doc.setFont("Helvetica", "normal");
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 26);
+        
+        // Divider line
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        doc.line(14, 29, 196, 29);
+        
+        // Metadata Panel
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42); // Slate-900
+        doc.text("USN / Candidate ID:", 14, 38);
+        doc.text("Subject:", 14, 44);
+        doc.text("Session ID:", 14, 50);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(51, 65, 85); // Slate-700
+        doc.text(usn, 60, 38);
+        doc.text(subject, 60, 44);
+        doc.text(sessionId, 60, 50);
+        
+        // Score Panel
+        doc.setFillColor(248, 250, 252); // Slate-50
+        doc.rect(120, 33, 76, 21, "F");
+        doc.setDrawColor(226, 232, 240);
+        doc.rect(120, 33, 76, 21, "S");
+        
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(79, 70, 229);
+        const percent = report.score_percent !== undefined ? report.score_percent : 0;
+        doc.text(`Score: ${Number(percent).toFixed(2)}%`, 124, 41);
+        
+        doc.setFont("Helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Correct: ${report.correct} / ${report.total_questions}`, 124, 48);
+        
+        // Question table header
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text("Question Breakdown", 14, 62);
+        doc.line(14, 65, 196, 65);
+        
+        const col1X = 14;
+        const col2X = 110;
+        let startY = 74;
+        
+        doc.setFontSize(9);
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(100, 116, 139);
+        doc.text("Q#", col1X, startY - 4);
+        doc.text("Marked", col1X + 15, startY - 4);
+        doc.text("Correct", col1X + 35, startY - 4);
+        doc.text("Status", col1X + 55, startY - 4);
+        
+        doc.text("Q#", col2X, startY - 4);
+        doc.text("Marked", col2X + 15, startY - 4);
+        doc.text("Correct", col2X + 35, startY - 4);
+        doc.text("Status", col2X + 55, startY - 4);
+        
+        doc.setLineWidth(0.2);
+        doc.line(col1X, startY - 2, col1X + 75, startY - 2);
+        doc.line(col2X, startY - 2, col2X + 75, startY - 2);
+        
+        const perQ = report.per_question || [];
+        const numQuestions = report.total_questions || 30;
+        for (let i = 0; i < numQuestions; i++) {
+          const q = perQ[i];
+          const isSecondCol = i >= Math.ceil(numQuestions / 2);
+          const xOffset = isSecondCol ? col2X : col1X;
+          const yOffset = startY + (i % Math.ceil(numQuestions / 2)) * 8;
+          
+          if (q) {
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(51, 65, 85);
+            doc.text(`${q.question_index !== undefined ? q.question_index : (i + 1)}`, xOffset, yOffset);
+            
+            const marked = q.marked_options && q.marked_options.length > 0 ? q.marked_options.join(",") : "—";
+            doc.text(marked, xOffset + 15, yOffset);
+            
+            const correctOpt = q.correct_option || "—";
+            doc.text(correctOpt, xOffset + 35, yOffset);
+            
+            if (q.status === "correct") {
+              doc.setTextColor(5, 150, 105);
+              doc.setFont("Helvetica", "bold");
+              doc.text("PASS", xOffset + 55, yOffset);
+            } else if (q.status === "incorrect" || q.status === "multiple_marked" || q.status === "ambiguous") {
+              doc.setTextColor(220, 38, 38);
+              doc.setFont("Helvetica", "bold");
+              doc.text("FAIL", xOffset + 55, yOffset);
+            } else {
+              doc.setTextColor(107, 114, 128);
+              doc.setFont("Helvetica", "normal");
+              doc.text("BLANK", xOffset + 55, yOffset);
+            }
+          } else {
+            doc.setFont("Helvetica", "normal");
+            doc.setTextColor(148, 163, 184);
+            doc.text(`${i + 1}`, xOffset, yOffset);
+            doc.text("—", xOffset + 15, yOffset);
+            doc.text("—", xOffset + 35, yOffset);
+            doc.text("BLANK", xOffset + 55, yOffset);
+          }
+        }
+        
+        // Page 2: Annotated image
+        const imgB64 = resultData.annotated_image_b64;
+        if (imgB64) {
+          doc.addPage();
+          doc.setFont("Helvetica", "bold");
+          doc.setFontSize(14);
+          doc.setTextColor(79, 70, 229);
+          doc.text("Annotated OMR Sheet Scan", 14, 15);
+          doc.line(14, 18, 196, 18);
+          
+          doc.addImage("data:image/jpeg;base64," + imgB64, "JPEG", 14, 22, 182, 255);
+        }
+        
+        doc.save(`OMR_Result_${usn}_${sessionId}.pdf`);
+      } catch (err) {
+        alert("Failed to generate student PDF report: " + err.message);
+      }
     });
 
     // ── Error handling ────────────────────────────────────
@@ -3100,6 +3336,8 @@
     function startScanning() {
       if (isScanning) return;
       isScanning = true;
+      const captureBtn = document.getElementById('manualCaptureBtn');
+      if (captureBtn) captureBtn.style.display = 'block';
       const ctx = webcamCanvas.getContext('2d');
       const SHARPNESS_THRESHOLD = 30; // Frames below this variance are too blurry (raised for clarity)
       let blurryCount = 0;
@@ -3151,6 +3389,8 @@
     function stopScanning() {
       isScanning = false;
       readyForNextFrame = true;
+      const captureBtn = document.getElementById('manualCaptureBtn');
+      if (captureBtn) captureBtn.style.display = 'none';
       if (scanInterval) {
         clearInterval(scanInterval);
         scanInterval = null;

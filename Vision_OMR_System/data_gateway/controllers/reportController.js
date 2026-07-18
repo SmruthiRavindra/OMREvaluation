@@ -78,7 +78,8 @@ export async function submitStudentResult(req, res) {
     unanswered = 0,
     multiple_marked = 0,
     score_percent = 0.00,
-    per_question = []
+    per_question = [],
+    annotated_image = null
   } = req.body;
 
   if (!session_id || !usn) {
@@ -107,8 +108,8 @@ export async function submitStudentResult(req, res) {
 
     const result = await query(
       `INSERT INTO student_results 
-        (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PRESENT', NOW())
+        (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, annotated_image, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PRESENT', NOW())
        ON CONFLICT (session_id, usn)
        DO UPDATE SET
          score = EXCLUDED.score,
@@ -119,10 +120,11 @@ export async function submitStudentResult(req, res) {
          multiple_marked = EXCLUDED.multiple_marked,
          score_percent = EXCLUDED.score_percent,
          per_question = EXCLUDED.per_question,
+         annotated_image = EXCLUDED.annotated_image,
          status = 'PRESENT',
          created_at = NOW()
        RETURNING id`,
-      [session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question)]
+      [session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question), annotated_image]
     );
     return res.status(201).json({ id: result.rows[0].id, saved: true });
   } catch (err) {
@@ -239,7 +241,7 @@ export async function downloadReport(req, res) {
     if (format === 'excel') {
       return await generateExcel(res, session, results, stats);
     } else if (format === 'pdf') {
-      return await generatePDF(res, session, results, stats);
+      return await generatePDF(res, session, results, stats, req.query.detail === 'true');
     } else {
       return res.status(400).json({ error: 'Invalid format. Use ?format=excel or ?format=pdf' });
     }
@@ -316,7 +318,7 @@ async function generateExcel(res, session, results, stats) {
   res.end();
 }
 
-async function generatePDF(res, session, results, stats) {
+async function generatePDF(res, session, results, stats, detail = false) {
   const doc = new PDFDocument({ margin: 50 });
 
   res.setHeader('Content-Type', 'application/pdf');
@@ -427,6 +429,101 @@ async function generatePDF(res, session, results, stats) {
     doc.fillColor('#4b5563');
 
     currentY += 20;
+  }
+
+  // Detailed per-student section with OMR image
+  if (detail) {
+    for (const r of results) {
+      if (r.status === 'ABSENT') continue;
+
+      doc.addPage();
+      
+      // Page Header
+      doc.fontSize(16).fillColor('#4F46E5').text(`Student OMR Sheet Breakdown`, 50, 40);
+      doc.fontSize(8).fillColor('#9ca3af').text(`Generated: ${new Date().toLocaleString()}`, 50, 60);
+      doc.moveTo(50, 70).lineTo(550, 70).strokeColor('#e5e7eb').stroke();
+
+      // Student info block
+      doc.fontSize(10).fillColor('#111827');
+      doc.text(`USN / Candidate ID:`, 50, 85);
+      doc.font('Helvetica-Bold').text(r.usn, 180, 85);
+      doc.font('Helvetica');
+
+      doc.text(`Score:`, 50, 100);
+      const scorePct = Number(r.score_percent);
+      const statusColor = scorePct >= PASS_THRESHOLD ? '#059669' : '#DC2626';
+      doc.fillColor(statusColor).font('Helvetica-Bold').text(`${r.score} / ${r.total} (${scorePct.toFixed(2)}%)`, 180, 100);
+      doc.fillColor('#111827').font('Helvetica');
+      
+      // Table Header for questions
+      doc.fontSize(11).font('Helvetica-Bold').text(`Grading Details`, 50, 125);
+      doc.moveTo(50, 137).lineTo(550, 137).strokeColor('#e5e7eb').stroke();
+
+      const col1X = 50;
+      const col2X = 300;
+      const startY = 155;
+      
+      doc.fontSize(8).fillColor('#9ca3af');
+      doc.text("Q#    Marked      Correct      Status", col1X, startY - 12);
+      doc.text("Q#    Marked      Correct      Status", col2X, startY - 12);
+      doc.moveTo(col1X, startY - 5).lineTo(col1X + 220, startY - 5).stroke();
+      doc.moveTo(col2X, startY - 5).lineTo(col2X + 220, startY - 5).stroke();
+
+      const perQ = r.per_question || [];
+      const totalQ = r.total || 30;
+
+      for (let i = 0; i < totalQ; i++) {
+        const q = perQ[i];
+        const isSecondCol = i >= Math.ceil(totalQ / 2);
+        const xOffset = isSecondCol ? col2X : col1X;
+        const yOffset = startY + (i % Math.ceil(totalQ / 2)) * 12;
+
+        doc.fontSize(9).fillColor('#4b5563');
+        const qNum = i + 1;
+
+        if (q) {
+          doc.text(`${qNum}`, xOffset, yOffset);
+          
+          const marked = q.marked_options && q.marked_options.length > 0 ? q.marked_options.join(",") : "—";
+          doc.text(`${marked}`, xOffset + 25, yOffset);
+
+          const correctOpt = q.correct_option || "—";
+          doc.text(`${correctOpt}`, xOffset + 70, yOffset);
+
+          if (q.status === 'correct') {
+            doc.fillColor('#059669').font('Helvetica-Bold').text("PASS", xOffset + 115, yOffset);
+          } else if (q.status === 'incorrect' || q.status === 'multiple_marked' || q.status === 'ambiguous') {
+            doc.fillColor('#DC2626').font('Helvetica-Bold').text("FAIL", xOffset + 115, yOffset);
+          } else {
+            doc.fillColor('#6b7280').font('Helvetica').text("BLANK", xOffset + 115, yOffset);
+          }
+          doc.font('Helvetica');
+        } else {
+          doc.text(`${qNum}`, xOffset, yOffset);
+          doc.text("—", xOffset + 25, yOffset);
+          doc.text("—", xOffset + 70, yOffset);
+          doc.fillColor('#6b7280').text("BLANK", xOffset + 115, yOffset);
+        }
+      }
+
+      // Add annotated image page if available
+      if (r.annotated_image) {
+        try {
+          doc.addPage();
+          
+          doc.fontSize(14).fillColor('#4F46E5').text(`Annotated OMR Scan — ${r.usn}`, 50, 40);
+          doc.moveTo(50, 55).lineTo(550, 55).strokeColor('#e5e7eb').stroke();
+
+          const base64Data = r.annotated_image.replace(/^data:image\/\w+;base64,/, '');
+          const imgBuffer = Buffer.from(base64Data, 'base64');
+          
+          doc.image(imgBuffer, 50, 75, { width: 500, height: 680 });
+        } catch (imgErr) {
+          console.error(`Failed to embed OMR image in PDF for ${r.usn}:`, imgErr.message);
+          doc.fontSize(12).fillColor('#DC2626').text(`[Error rendering OMR sheet scan image: ${imgErr.message}]`, 50, 100);
+        }
+      }
+    }
   }
 
   doc.end();
