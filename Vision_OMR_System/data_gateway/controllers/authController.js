@@ -233,9 +233,9 @@ export async function deleteUser(req, res) {
 export async function getAdminStats(req, res) {
   try {
     const sessionsRes = await pool.query('SELECT COUNT(*) FROM exam_sessions');
-    const resultsRes = await pool.query('SELECT COUNT(*) FROM student_results');
+    const resultsRes = await pool.query("SELECT COUNT(*) FROM student_results WHERE status = 'PRESENT'");
     const usersRes = await pool.query('SELECT COUNT(*) FROM users');
-    const avgRes = await pool.query('SELECT AVG(score_percent) FROM student_results');
+    const avgRes = await pool.query("SELECT AVG(score_percent) FROM student_results WHERE status = 'PRESENT'");
 
     return res.json({
       sessionsCount: parseInt(sessionsRes.rows[0].count || 0),

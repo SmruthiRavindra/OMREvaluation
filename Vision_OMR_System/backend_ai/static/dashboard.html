@@ -15,40 +15,40 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg-primary: #f8fafc;
-      --bg-card: #ffffff;
-      --bg-card-hover: #f1f5f9;
-      --bg-input: #f8fafc;
-      --border: #cbd5e1;
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #64748b;
-      --accent: #4f46e5;
-      --accent-hover: #4338ca;
-      --accent-glow: rgba(79, 70, 229, 0.15);
-      --green: #16a34a;
-      --red: #dc2626;
-      --amber: #d97706;
-      --gray: #64748b;
+      --bg-primary: #F8FAFC;
+      --bg-card: #FFFFFF;
+      --bg-card-hover: #F1F5F9;
+      --bg-input: #F8FAFC;
+      --border: #E2E8F0;
+      --text-primary: #0F172A;
+      --text-secondary: #64748B;
+      --text-muted: #94A3B8;
+      --accent: #0891B2;
+      --accent-hover: #0E7490;
+      --accent-glow: rgba(8, 145, 178, 0.12);
+      --green: #059669;
+      --red: #DC2626;
+      --amber: #D97706;
+      --gray: #64748B;
       --radius: 12px;
       --radius-sm: 8px;
     }
 
     html[data-theme="dark"] {
-      --bg-primary: #0a0a14;
-      --bg-card: #12121e;
-      --bg-card-hover: #1a1a2e;
-      --bg-input: #1e1e2e;
-      --border: #2a2a3e;
-      --text-primary: #e2e8f0;
+      --bg-primary: #0F172A;
+      --bg-card: #1E293B;
+      --bg-card-hover: #263244;
+      --bg-input: #0F172A;
+      --border: #334155;
+      --text-primary: #F8FAFC;
       --text-secondary: #94a3b8;
       --text-muted: #64748b;
-      --accent: #6C63FF;
-      --accent-hover: #5a52e0;
-      --accent-glow: rgba(108, 99, 255, 0.3);
-      --green: #22c55e;
-      --red: #ef4444;
-      --amber: #f59e0b;
+      --accent: #22D3EE;
+      --accent-hover: #06B6D4;
+      --accent-glow: rgba(34, 211, 238, 0.15);
+      --green: #10B981;
+      --red: #F87171;
+      --amber: #FBBF24;
     }
 
     .theme-toggle-btn {
@@ -92,7 +92,7 @@
       z-index: 100;
     }
     html[data-theme="dark"] .header {
-      background: rgba(10, 10, 20, 0.8);
+      background: rgba(15, 23, 42, 0.8);
     }
     .header-left { display: flex; align-items: center; gap: 12px; }
     .logo {
@@ -106,9 +106,9 @@
       font-weight: 600;
       padding: 3px 10px;
       border-radius: 20px;
-      background: rgba(108, 99, 255, 0.15);
+      background: var(--accent-glow);
       color: var(--accent);
-      border: 1px solid rgba(108, 99, 255, 0.3);
+      border: 1px solid var(--accent);
     }
     .header-status {
       font-size: 13px;
@@ -129,16 +129,121 @@
 
     /* ── Main Layout ─────────────────────────────────── */
     .main {
-      max-width: 1400px;
+      max-width: 1200px;
       margin: 0 auto;
-      padding: 28px 32px;
-      display: grid;
-      grid-template-columns: 440px 1fr;
-      gap: 28px;
+      padding: 16px 20px 80px 20px;
     }
 
-    @media (max-width: 1024px) {
-      .main { grid-template-columns: 1fr; }
+    /* ── Step Indicator ──────────────────────────────── */
+    .step-indicator {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .step-indicator .step {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+    }
+    .step-indicator .step.active {
+      color: var(--accent);
+      font-weight: 700;
+    }
+    .step-indicator .step.completed {
+      color: var(--green);
+      font-weight: 600;
+    }
+    .step-indicator .step-sep {
+      color: var(--text-muted);
+      font-size: 16px;
+      user-select: none;
+    }
+
+    /* ── Page Views ─────────────────────────────────── */
+    .page-view {
+      display: none;
+      width: 100%;
+      opacity: 0;
+      transition: opacity 0.2s ease-in-out;
+    }
+    .page-view.active {
+      display: block;
+      opacity: 1;
+    }
+    .page-view-centered {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 12px 0;
+    }
+
+    /* ── Page 3 Results Grid ────────────────────────── */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1.12fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 900px) {
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ── Action Bar ──────────────────────────────────── */
+    .action-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255, 255, 255, 0.95);
+      border-top: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 99;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.03);
+    }
+    html[data-theme="dark"] .action-bar {
+      background: rgba(30, 41, 59, 0.95);
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.2);
+    }
+    .action-bar-right {
+      display: flex;
+      gap: 12px;
+      margin-left: auto;
+    }
+
+    /* ── Unsaved warning inline banner ───────────────── */
+    .scan-another-warning {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 20px;
+      background: rgba(217, 119, 6, 0.1);
+      border: 1px solid rgba(217, 119, 6, 0.3);
+      border-radius: var(--radius-sm);
+      color: var(--amber);
+      font-size: 13px;
+      margin-top: 16px;
+      animation: pulseAlert 2s infinite;
+    }
+    @keyframes pulseAlert {
+      0%, 100% { border-color: rgba(217, 119, 6, 0.3); }
+      50% { border-color: rgba(217, 119, 6, 0.6); }
     }
 
     /* ── Cards ────────────────────────────────────────── */
@@ -491,83 +596,112 @@
     </div>
   </header>
 
+  <!-- Step Indicator -->
+  <nav class="step-indicator" id="stepIndicator">
+    <div class="step active" onclick="navigateToStep(1)" id="stepInd1">
+      <span>●</span> 1. Session Setup
+    </div>
+    <div class="step-sep">›</div>
+    <div class="step" onclick="navigateToStep(2)" id="stepInd2">
+      <span>○</span> 2. OMR Capture
+    </div>
+    <div class="step-sep">›</div>
+    <div class="step" onclick="navigateToStep(3)" id="stepInd3">
+      <span>○</span> 3. Results & Pipeline
+    </div>
+  </nav>
+
   <!-- Main -->
   <main class="main">
 
-    <!-- ── Left Panel: Upload + Controls ─────────────── -->
-    <div class="left-panel">
-      <!-- Pending Submissions Banner -->
-      <div id="pendingBanner" style="display: none; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px 16px; border-radius: var(--radius); margin-bottom: 20px; font-size: 13px; color: var(--amber); align-items: center; justify-content: space-between; transition: all 0.3s ease;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span>⚠</span>
-          <span><strong><span id="pendingCountText">0</span></strong> student report(s) pending to be saved.</span>
-        </div>
-        <span style="font-size: 11px; background: rgba(245, 158, 11, 0.2); padding: 2px 8px; border-radius: 20px; font-weight: 700;">PENDING</span>
-      </div>
-
-      <!-- Step 1: Session Setup Card -->
-      <div class="card" style="margin-bottom: 20px;" id="step1Card">
-        <div class="card-header">1️⃣ Step 1: Session Setup</div>
-        <div class="card-body">
-          <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1.2fr 1.5fr 0.8fr; gap: 12px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
-              <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
-            </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Subject</label>
-              <input type="text" id="subjectInput" value="Mathematics" placeholder="e.g. Mathematics" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
-            </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Section</label>
-              <input type="text" id="sectionInput" value="A" placeholder="e.g. A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
-            </div>
+    <!-- Page 1: Session & Answer Key -->
+    <div class="page-view active" id="pageView1">
+      <div class="page-view-centered">
+        <!-- Pending Submissions Banner -->
+        <div id="pendingBanner" style="display: none; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 12px 16px; border-radius: var(--radius); margin-bottom: 20px; font-size: 13px; color: var(--amber); align-items: center; justify-content: space-between; transition: all 0.3s ease;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span>⚠</span>
+            <span><strong><span id="pendingCountText">0</span></strong> student report(s) pending to be saved.</span>
           </div>
-          <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr; gap: 12px;">
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students in Class</label>
-              <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
-            </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
-              <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
-            </div>
-            <div>
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Student Roster (Registered USNs, Comma Separated)</label>
-              <textarea id="rosterUsnsInput" placeholder="e.g. 4VV23CS101, 4VV23CS102, 4VV23CS205" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
-              <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="useRosterOrderCheckbox" style="width: auto; cursor: pointer; margin: 0;">
-                <label for="useRosterOrderCheckbox" style="font-size: 11px; color: var(--text-secondary); cursor: pointer; font-weight: 600; margin: 0; user-select: none;">Match by Scan Order (Disable USN OCR)</label>
+          <span style="font-size: 11px; background: rgba(245, 158, 11, 0.2); padding: 2px 8px; border-radius: 20px; font-weight: 700;">PENDING</span>
+        </div>
+
+        <!-- Step 1: Session Setup Card -->
+        <div class="card" style="margin-bottom: 20px;" id="step1Card">
+          <div class="card-header">1️⃣ Step 1: Session Setup</div>
+          <div class="card-body">
+            <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1.2fr 1.5fr 0.8fr; gap: 12px;">
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Session ID</label>
+                <input type="text" id="sessionIdInput" value="default" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+              </div>
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Subject</label>
+                <input type="text" id="subjectInput" value="Mathematics" placeholder="e.g. Mathematics" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+              </div>
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Section</label>
+                <input type="text" id="sectionInput" value="A" placeholder="e.g. A" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
               </div>
             </div>
+            <div style="margin-bottom: 12px; display: grid; grid-template-columns: 1fr; gap: 12px;">
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Expected Students in Class</label>
+                <input type="number" id="expectedStudentsInput" value="30" min="1" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px;">
+              </div>
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Absentee USNs (Comma Separated)</label>
+                <textarea id="absentUsnsInput" placeholder="e.g. 1RV20CS004, 1RV20CS009" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+              </div>
+              <div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Student Roster (Registered USNs, Comma Separated)</label>
+                <textarea id="rosterUsnsInput" placeholder="e.g. 4VV23CS101, 4VV23CS102, 4VV23CS205" style="width: 100%; height: 50px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; resize: vertical;"></textarea>
+                <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                  <input type="checkbox" id="useRosterOrderCheckbox" style="width: auto; cursor: pointer; margin: 0;">
+                  <label for="useRosterOrderCheckbox" style="font-size: 11px; color: var(--text-secondary); cursor: pointer; font-weight: 600; margin: 0; user-select: none;">Match by Scan Order (Disable USN OCR)</label>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="initSessionBtn" style="background: var(--accent);">
+              🚀 Initialize Session
+            </button>
+            <div id="initSessionStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
           </div>
-          <button class="btn btn-primary" id="initSessionBtn" style="background: var(--accent);">
-            🚀 Initialize Session
-          </button>
-          <div id="initSessionStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+        </div>
+
+        <!-- Container for subsequent steps, disabled by default -->
+        <div id="workflowStepsContainer" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease;">
+          <!-- Step 2: Answer Key Card -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">🔑 Step 2: Answer Key</div>
+            <div class="card-body">
+              <div style="margin-bottom: 12px;">
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
+                <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+              </div>
+              <div>
+                <button class="btn btn-secondary" id="saveAnswerKeyBtn">
+                  💾 Save Answer Key
+                </button>
+              </div>
+              <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Container for subsequent steps, disabled by default -->
-      <div id="workflowStepsContainer" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease;">
-      
-        <!-- Step 2: Answer Key Card -->
-        <div class="card" style="margin-bottom: 20px;">
-          <div class="card-header">🔑 Step 2: Answer Key</div>
-          <div class="card-body">
-            <div style="margin-bottom: 12px;">
-              <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
-              <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
-            </div>
-            <div>
-              <button class="btn btn-secondary" id="saveAnswerKeyBtn">
-                💾 Save Answer Key
-              </button>
-            </div>
-            <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
-          </div>
+      <!-- Action Bar for Page 1 -->
+      <div class="action-bar">
+        <div></div>
+        <div class="action-bar-right">
+          <button class="btn btn-primary" id="btnGoToCapture" style="width: auto; padding: 10px 20px;" disabled>Proceed to Capture →</button>
         </div>
+      </div>
+    </div>
 
+    <!-- Page 2: OMR Capture -->
+    <div class="page-view" id="pageView2">
+      <div class="page-view-centered">
         <!-- Step 3: Upload Card -->
         <div class="card" style="margin-bottom: 20px;">
           <div class="card-header">📷 Step 3: OMR Capture Mode</div>
@@ -601,11 +735,11 @@
 
             <!-- Live Webcam Mode -->
             <div id="webcamModeContainer" style="display: none; text-align: center; position: relative; max-width: 600px; margin: 0 auto 16px auto;">
-              <video id="webcamVideo" autoplay playsinline style="width: 100%; height: auto; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
-              <img id="webcamRenderImage" style="width: 100%; height: auto; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
+              <video id="webcamVideo" autoplay playsinline style="width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius); background: #000; display: block; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);"></video>
+              <img id="webcamRenderImage" style="width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
               
               <!-- Clean Viewfinder Guide -->
-              <div id="webcamScanGuide" style="position: absolute; inset: 20px; border: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 8px; pointer-events: none; z-index: 5; transition: border-color 0.2s ease, border-style 0.2s ease;">
+              <div id="webcamScanGuide" style="display: none; position: absolute; inset: 20px; border: 2px dashed rgba(255, 255, 255, 0.5); border-radius: 8px; pointer-events: none; z-index: 5; transition: border-color 0.2s ease, border-style 0.2s ease;">
                 <!-- Clean white corner brackets -->
                 <div style="position: absolute; top: -2px; left: -2px; width: 16px; height: 16px; border-top: 3px solid #ffffff; border-left: 3px solid #ffffff; border-top-left-radius: 6px;"></div>
                 <div style="position: absolute; top: -2px; right: -2px; width: 16px; height: 16px; border-top: 3px solid #ffffff; border-right: 3px solid #ffffff; border-top-right-radius: 6px;"></div>
@@ -701,200 +835,233 @@
             </div>
           </div>
         </div>
-
-        <!-- Step 4: Review & Submit Card -->
-        <div class="card" style="margin-bottom: 20px;">
-          <div class="card-header">🗄️ Step 4: Review & Submit</div>
-          <div class="card-body">
-            <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: var(--amber); font-size: 13px;">
-              ✋ Review & Confirm Before Saving
-            </button>
-            <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: var(--green); display: none;">
-              📤 Submit Confirmed Result to DB
-            </button>
-            <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
-            
-            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-              <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Download Excel</button>
-              <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 Download PDF</button>
-            </div>
-            <button class="btn btn-secondary" id="viewDbBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📋 View Database Records</button>
-            <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
-          </div>
-        </div>
-
-        <!-- Inline DB Viewer Panel -->
-        <div class="card" id="dbViewerPanel" style="display:none; margin-bottom: 20px;">
-          <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
-            <span>📋 Database Records</span>
-            <button onclick="document.getElementById('dbViewerPanel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">✕</button>
-          </div>
-          <div class="card-body">
-            <div style="display:flex; gap:8px; margin-bottom:12px;">
-              <select id="dbSessionSelector" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px;"><option value="">Select a session...</option></select>
-              <button class="btn btn-secondary" id="dbLoadResultsBtn" style="padding:6px 10px; font-size:11px;">Load</button>
-            </div>
-            <div id="dbResultsTable" style="font-size:11px;"></div>
-          </div>
-        </div>
-      </div> <!-- Close .left-panel -->
-
-      <!-- ── Right Panel: Results & Image Viewer ───────── -->
-      <div class="right-panel">
-
-        <!-- Pipeline Visualization -->
-        <div class="card">
-          <div class="card-header">🖼️ Pipeline Visualization</div>
-          <div class="card-body">
-            <div class="image-tabs" id="imageTabs">
-              <button class="image-tab active" data-view="annotated">Annotated</button>
-              <button class="image-tab" data-view="preprocessed">Preprocessed</button>
-              <button class="image-tab" data-view="original">Original</button>
-            </div>
-
-            <div class="image-display" id="imageDisplay">
-              <div class="placeholder" id="imagePlaceholder">
-                <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">🔬</div>
-                <p>Upload an OMR sheet and run the pipeline<br>to see annotated results here.</p>
-              </div>
-              <img id="resultImage" style="display:none;" alt="Result">
-            </div>
-          </div>
-        </div>
-
-        <!-- Stats Card -->
-        <div class="card" id="statsCard" style="display:none;">
-          <div class="card-header">📊 Detection Summary</div>
-          <div class="card-body">
-            <div class="stats-grid">
-              <div class="stat-card">
-                <div class="stat-value green" id="filledCount">0</div>
-                <div class="stat-label">Filled</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value gray" id="emptyCount">0</div>
-                <div class="stat-label">Empty</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-value amber" id="ambigCount">0</div>
-                <div class="stat-label">Ambiguous</div>
-              </div>
-            </div>
-
-            <div class="info-bar">
-              <div class="info-item">
-                ⏱ <span class="info-value" id="processingTime">—</span> ms
-              </div>
-              <div class="info-item">
-                🎯 <span class="info-value" id="totalDetections">—</span> detections
-              </div>
-              <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
-                🆔 Student: 
-                <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
-              </div>
-            </div>
-
-            <!-- Scoring Section -->
-            <div id="scoreSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
-              <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Grading Report</h4>
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
-                <div>
-                  <div style="font-size: 24px; font-weight: 800; color: var(--green);" id="scorePercent">0%</div>
-                  <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Score Percentage</div>
-                </div>
-                <div style="text-align: right;">
-                  <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><span id="scoreCorrect">0</span> / <span id="scoreTotal">0</span></div>
-                  <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Correct Answers</div>
-                </div>
-              </div>
-              <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0; font-size: 12px;">
-                <div class="stat-card" style="padding: 10px 4px;">
-                  <div class="stat-value green" id="scoreCorrectVal" style="font-size: 16px;">0</div>
-                  <div class="stat-label" style="font-size: 8px;">Correct</div>
-                </div>
-                <div class="stat-card" style="padding: 10px 4px;">
-                  <div class="stat-value red" id="scoreIncorrectVal" style="font-size: 16px;">0</div>
-                  <div class="stat-label" style="font-size: 8px;">Incorrect</div>
-                </div>
-                <div class="stat-card" style="padding: 10px 4px;">
-                  <div class="stat-value gray" id="scoreUnansweredVal" style="font-size: 16px;">0</div>
-                  <div class="stat-label" style="font-size: 8px;">Unanswered</div>
-                </div>
-                <div class="stat-card" style="padding: 10px 4px;">
-                  <div class="stat-value amber" id="scoreMultiVal" style="font-size: 16px;">0</div>
-                  <div class="stat-label" style="font-size: 8px;">Multi</div>
-                </div>
-              </div>
-            </div>
-
-            <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
-              ⚠️ Manual review required — some bubbles are ambiguous.
-            </div>
-            
-            <!-- PDF Export Section -->
-            <div id="pdfExportContainer" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
-              <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Export Sheet Report</h4>
-              <div style="display: flex; flex-direction: column; gap: 8px;">
-                <input type="text" id="facultyNameInput" placeholder="Faculty Signature Name" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; font-family: inherit;">
-                <button id="downloadPdfBtn" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                  📥 Download Sheet PDF
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Table Card -->
-        <div class="card" id="tableCard" style="display:none;">
-          <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
-            <span id="tableTitle">🔬 Bubble Details</span>
-            <div style="display: flex; gap: 4px; align-items: center;">
-              <button id="saveOverrideBtn" style="display:none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: #2563eb; color: white; border: none; cursor: pointer; font-weight: 600;">💾 Save Override</button>
-              <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
-                <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
-                <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
-              </div>
-            </div>
-          </div>
-          <div class="card-body" style="padding: 0;">
-            <!-- Bubbles Table -->
-            <div class="bubble-table-wrapper" id="bubblesTableWrapper">
-              <table class="bubble-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>State</th>
-                    <th>Fill %</th>
-                    <th>Conf.</th>
-                    <th>Review</th>
-                  </tr>
-                </thead>
-                <tbody id="bubbleTableBody"></tbody>
-              </table>
-            </div>
-
-            <!-- Grading Table -->
-            <div class="bubble-table-wrapper" id="gradingTableWrapper" style="display: none;">
-              <table class="bubble-table">
-                <thead>
-                  <tr>
-                    <th>Q#</th>
-                    <th>Marked</th>
-                    <th>Correct</th>
-                    <th>Status</th>
-                    <th>Override</th>
-                  </tr>
-                </thead>
-                <tbody id="gradingTableBody"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        <!-- Error display -->
-        <div class="alert error" id="errorAlert"></div>
-
       </div>
+
+      <!-- Action Bar for Page 2 -->
+      <div class="action-bar">
+        <button class="btn btn-secondary" id="btnBackToSetup" style="width: auto; padding: 10px 20px;">← Back to Setup</button>
+        <div></div>
+      </div>
+    </div>
+
+    <!-- Page 3: Results & Pipeline -->
+    <div class="page-view" id="pageView3">
+      <!-- Unsaved Results Warning Modal -->
+      <div id="unsavedWarningModal" style="display:none; position:fixed; inset:0; z-index:1001; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
+        <div style="max-width:480px; width:90%; background:var(--bg-card); border-radius:var(--radius); border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.3); padding:24px; text-align:center;">
+          <div style="font-size:40px; margin-bottom:12px; color:var(--amber);">⚠️</div>
+          <h3 style="font-size:16px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Unsaved Grading Results</h3>
+          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">This scanned result has not been saved to the database. Proceeding to a new scan will discard these results.</p>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button id="btnWarningSaveProceed" class="btn btn-primary" style="background:var(--green); font-size:13px; padding:10px 16px;">💾 Save & Proceed</button>
+            <button id="btnWarningDiscardProceed" class="btn btn-secondary" style="font-size:13px; padding:10px 16px; color: var(--text-primary); border-color: var(--border);">Discard & Scan Next</button>
+            <button onclick="document.getElementById('unsavedWarningModal').style.display='none'" class="btn btn-secondary" style="background:transparent; border:none; color:var(--text-muted); font-size:12px; padding:4px; cursor:pointer;">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="results-grid" style="margin-top: 16px;">
+        <!-- Left: Stats, Score, Grading, Submit -->
+        <div class="right-panel">
+          <!-- Step 4: Review & Submit Card -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">🗄️ Step 4: Review & Submit</div>
+            <div class="card-body">
+              <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: var(--amber); font-size: 13px;">
+                ✋ Review & Confirm Before Saving
+              </button>
+              <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: var(--green); display: none;">
+                📤 Submit Confirmed Result to DB
+              </button>
+              <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
+              
+              <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Download Excel</button>
+                <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 Download PDF</button>
+              </div>
+              <button class="btn btn-secondary" id="viewDbBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📋 View Database Records</button>
+              <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
+            </div>
+          </div>
+
+          <!-- Stats Card -->
+          <div class="card" id="statsCard" style="display:none; margin-bottom: 20px;">
+            <div class="card-header">📊 Detection Summary</div>
+            <div class="card-body">
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <div class="stat-value green" id="filledCount">0</div>
+                  <div class="stat-label">Filled</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value gray" id="emptyCount">0</div>
+                  <div class="stat-label">Empty</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value amber" id="ambigCount">0</div>
+                  <div class="stat-label">Ambiguous</div>
+                </div>
+              </div>
+
+              <div class="info-bar">
+                <div class="info-item">
+                  ⏱ <span class="info-value" id="processingTime">—</span> ms
+                </div>
+                <div class="info-item">
+                  🎯 <span class="info-value" id="totalDetections">—</span> detections
+                </div>
+                <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
+                  🆔 Student: 
+                  <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
+                </div>
+              </div>
+
+              <!-- Scoring Section -->
+              <div id="scoreSection" style="display: none; margin-top: 20px; border-top: 1px solid var(--border); padding-top: 20px;">
+                <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Grading Report</h4>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+                  <div>
+                    <div style="font-size: 24px; font-weight: 800; color: var(--green);" id="scorePercent">0%</div>
+                    <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Score Percentage</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 14px; font-weight: 700; color: var(--text-primary);"><span id="scoreCorrect">0</span> / <span id="scoreTotal">0</span></div>
+                    <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Correct Answers</div>
+                  </div>
+                </div>
+                <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 0; font-size: 12px;">
+                  <div class="stat-card" style="padding: 10px 4px;">
+                    <div class="stat-value green" id="scoreCorrectVal" style="font-size: 16px;">0</div>
+                    <div class="stat-label" style="font-size: 8px;">Correct</div>
+                  </div>
+                  <div class="stat-card" style="padding: 10px 4px;">
+                    <div class="stat-value red" id="scoreIncorrectVal" style="font-size: 16px;">0</div>
+                    <div class="stat-label" style="font-size: 8px;">Incorrect</div>
+                  </div>
+                  <div class="stat-card" style="padding: 10px 4px;">
+                    <div class="stat-value gray" id="scoreUnansweredVal" style="font-size: 16px;">0</div>
+                    <div class="stat-label" style="font-size: 8px;">Unanswered</div>
+                  </div>
+                  <div class="stat-card" style="padding: 10px 4px;">
+                    <div class="stat-value amber" id="scoreMultiVal" style="font-size: 16px;">0</div>
+                    <div class="stat-label" style="font-size: 8px;">Multi</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
+                ⚠️ Manual review required — some bubbles are ambiguous.
+              </div>
+              
+              <!-- PDF Export Section -->
+              <div id="pdfExportContainer" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
+                <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Export Sheet Report</h4>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                  <input type="text" id="facultyNameInput" placeholder="Faculty Signature Name" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; font-family: inherit;">
+                  <button id="downloadPdfBtn" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    📥 Download Sheet PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table Card -->
+          <div class="card" id="tableCard" style="display:none; margin-bottom: 20px;">
+            <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 20px;">
+              <span id="tableTitle">🔬 Bubble Details</span>
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <button id="saveOverrideBtn" style="display:none; padding: 4px 10px; font-size: 11px; border-radius: 6px; background: #2563eb; color: white; border: none; cursor: pointer; font-weight: 600;">💾 Save Override</button>
+                <div style="display: flex; gap: 4px; background: var(--bg-input); padding: 2px; border-radius: var(--radius-sm);">
+                  <button class="image-tab active" id="btnShowBubbles" style="padding: 4px 8px; font-size: 11px;">Bubbles</button>
+                  <button class="image-tab" id="btnShowGrading" style="padding: 4px 8px; font-size: 11px; display: none;">Grading</button>
+                </div>
+              </div>
+            </div>
+            <div class="card-body" style="padding: 0;">
+              <!-- Bubbles Table -->
+              <div class="bubble-table-wrapper" id="bubblesTableWrapper">
+                <table class="bubble-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>State</th>
+                      <th>Fill %</th>
+                      <th>Conf.</th>
+                      <th>Review</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bubbleTableBody"></tbody>
+                </table>
+              </div>
+
+              <!-- Grading Table -->
+              <div class="bubble-table-wrapper" id="gradingTableWrapper" style="display: none;">
+                <table class="bubble-table">
+                  <thead>
+                    <tr>
+                      <th>Q#</th>
+                      <th>Marked</th>
+                      <th>Correct</th>
+                      <th>Status</th>
+                      <th>Override</th>
+                    </tr>
+                  </thead>
+                  <tbody id="gradingTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error display -->
+          <div class="alert error" id="errorAlert"></div>
+        </div>
+
+        <!-- Right: Visualization, DB Viewer -->
+        <div class="right-panel">
+          <!-- Pipeline Visualization Card -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header">🖼️ Pipeline Visualization</div>
+            <div class="card-body">
+              <div class="image-tabs" id="imageTabs">
+                <button class="image-tab active" data-view="annotated">Annotated</button>
+                <button class="image-tab" data-view="preprocessed">Preprocessed</button>
+                <button class="image-tab" data-view="original">Original</button>
+              </div>
+
+              <div class="image-display" id="imageDisplay">
+                <div class="placeholder" id="imagePlaceholder">
+                  <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.3;">🔬</div>
+                  <p>Upload an OMR sheet and run the pipeline<br>to see annotated results here.</p>
+                </div>
+                <img id="resultImage" style="display:none;" alt="Result">
+              </div>
+            </div>
+          </div>
+
+          <!-- Inline DB Viewer Panel -->
+          <div class="card" id="dbViewerPanel" style="display:none; margin-bottom: 20px;">
+            <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+              <span>📋 Database Records</span>
+              <button onclick="document.getElementById('dbViewerPanel').style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;">✕</button>
+            </div>
+            <div class="card-body">
+              <div style="display:flex; gap:8px; margin-bottom:12px;">
+                <select id="dbSessionSelector" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px;"><option value="">Select a session...</option></select>
+                <button class="btn btn-secondary" id="dbLoadResultsBtn" style="padding:6px 10px; font-size:11px;">Load</button>
+              </div>
+              <div id="dbResultsTable" style="font-size:11px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Bar for Page 3 -->
+      <div class="action-bar">
+        <button class="btn btn-secondary" id="btnScanAnother" style="width: auto; padding: 10px 20px;">← Scan Another</button>
+        <div></div>
+      </div>
+    </div>
 
     <!-- ── Teacher Confirmation Modal ──────────────── -->
     <div id="confirmModal" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); overflow-y:auto;">
@@ -946,9 +1113,9 @@
       window.location.href = '/login';
     }
 
-    // Intercept all fetch calls to add the Authorization header
+    // Intercept all fetch calls to add the Authorization header and handle 401s
     const originalFetch = window.fetch;
-    window.fetch = function (url, options = {}) {
+    window.fetch = async function (url, options = {}) {
       if (token) {
         options.headers = options.headers || {};
         if (options.headers instanceof Headers) {
@@ -964,13 +1131,98 @@
           }
         }
       }
-      return originalFetch(url, options);
+      const response = await originalFetch(url, options);
+      if (response.status === 401) {
+        localStorage.clear();
+        window.location.href = '/login';
+        // Return a never-resolving promise to prevent subsequent .then() or awaits from executing
+        // This stops "corrupted" error messages from rendering while the page redirects.
+        return new Promise(() => {});
+      }
+      return response;
     };
 
     // Helper to build authenticated WebSocket URLs
     function getWebSocketUrl() {
       return GATEWAY_URL.replace(/^http/, 'ws') + '/ws/evaluate?token=' + encodeURIComponent(token || '');
     }
+
+    window._sessionInitialized = false;
+    window._resultSaved = true;
+    window.currentPage = 1;
+
+    function showPage(pageNumber) {
+      if (pageNumber === 2 && !window._sessionInitialized) {
+        alert("Please initialize the grading session first.");
+        return;
+      }
+      if (pageNumber === 3 && !window._sessionInitialized) {
+        alert("Please initialize the grading session first.");
+        return;
+      }
+
+      window.currentPage = pageNumber;
+      if (window.location.hash !== '#page' + pageNumber) {
+        window.location.hash = 'page' + pageNumber;
+      }
+
+      // Hide all pages, show active
+      document.querySelectorAll('.page-view').forEach(p => {
+        p.classList.remove('active');
+      });
+      const activePage = document.getElementById('pageView' + pageNumber);
+      if (activePage) activePage.classList.add('active');
+
+      // Update step indicator state
+      for (let i = 1; i <= 3; i++) {
+        const stepEl = document.getElementById('stepInd' + i);
+        if (!stepEl) continue;
+        stepEl.className = 'step';
+        const indicatorSpan = stepEl.querySelector('span');
+
+        if (i === pageNumber) {
+          stepEl.classList.add('active');
+          if (indicatorSpan) indicatorSpan.textContent = '●';
+        } else if (i < pageNumber) {
+          stepEl.classList.add('completed');
+          if (indicatorSpan) indicatorSpan.textContent = '✓';
+        } else {
+          if (indicatorSpan) indicatorSpan.textContent = '○';
+        }
+      }
+    }
+
+    window.navigateToStep = function(stepNumber) {
+      if (stepNumber === 1 || window._sessionInitialized) {
+        showPage(stepNumber);
+      }
+    };
+
+    function resetCaptureResults() {
+      const clearBtn = document.getElementById('clearBtn');
+      if (clearBtn) clearBtn.click();
+    }
+
+    // Hash change handler for browser back/forward buttons
+    window.addEventListener('hashchange', () => {
+      const match = window.location.hash.match(/^#page(\d+)$/);
+      if (match) {
+        const page = parseInt(match[1]);
+        if (page !== window.currentPage) {
+          if (page === 2 && !window._sessionInitialized) {
+            window.location.hash = 'page1';
+            return;
+          }
+          if (page === 3 && !window._sessionInitialized) {
+            window.location.hash = 'page1';
+            return;
+          }
+          showPage(page);
+        }
+      } else {
+        showPage(1);
+      }
+    });
 
     // Initialize header navigation UI based on auth state
     window.addEventListener('DOMContentLoaded', () => {
@@ -987,6 +1239,47 @@
         localStorage.clear();
         window.location.href = '/login';
       });
+
+      // Redesign navigation wiring
+      document.getElementById('btnGoToCapture').addEventListener('click', () => {
+        showPage(2);
+      });
+      document.getElementById('btnBackToSetup').addEventListener('click', () => {
+        showPage(1);
+      });
+
+      // "Scan Another" click handler
+      document.getElementById('btnScanAnother').addEventListener('click', () => {
+        if (!window._resultSaved) {
+          // Show unsaved warning modal
+          document.getElementById('unsavedWarningModal').style.display = 'flex';
+        } else {
+          // Safe to navigate
+          showPage(2);
+          resetCaptureResults();
+        }
+      });
+
+      // Unsaved warning buttons
+      document.getElementById('btnWarningSaveProceed').addEventListener('click', () => {
+        document.getElementById('unsavedWarningModal').style.display = 'none';
+        const submitBtn = document.getElementById('submitDbBtn');
+        if (submitBtn && !submitBtn.disabled && submitBtn.style.display !== 'none') {
+          submitBtn.click();
+        }
+        showPage(2);
+        resetCaptureResults();
+      });
+
+      document.getElementById('btnWarningDiscardProceed').addEventListener('click', () => {
+        document.getElementById('unsavedWarningModal').style.display = 'none';
+        window._resultSaved = true;
+        showPage(2);
+        resetCaptureResults();
+      });
+
+      // Show initial page on load
+      showPage(1);
     });
     
     // Dynamically display the active IP/hostname in the header status bar
@@ -1708,6 +2001,8 @@
 
 
     function renderResults(data) {
+      window._resultSaved = false;
+      showPage(3);
       // Stats
       document.getElementById('filledCount').textContent = data.filled_count;
       document.getElementById('emptyCount').textContent = data.empty_count;
@@ -2032,6 +2327,8 @@
         statusEl.textContent = `✅ Saved ${successCount}/${itemsToSubmit.length} results to database!`;
         statusEl.style.color = 'var(--green)';
         
+        window._resultSaved = true;
+        
         // Re-fetch pending count from database gateway
         await fetchPendingCount();
       } catch (err) {
@@ -2095,6 +2392,10 @@
         
         // Re-fetch pending count from database gateway
         await fetchPendingCount();
+        
+        // Set state and unlock page 2 navigation
+        window._sessionInitialized = true;
+        document.getElementById('btnGoToCapture').disabled = false;
         
         // Unlock Step 2
         document.getElementById('workflowStepsContainer').style.opacity = '1';
@@ -2316,6 +2617,9 @@
       tabUploadMode.classList.remove('active');
       webcamModeContainer.style.display = 'block';
       uploadModeContainer.style.display = 'none';
+      if (!localStream) {
+        startWebcamBtn.click();
+      }
     });
     
     startWebcamBtn.addEventListener('click', async () => {
@@ -2331,6 +2635,7 @@
           video: { facingMode: 'environment', width: 640, height: 480 }
         });
         webcamVideo.srcObject = localStream;
+        document.getElementById('webcamScanGuide').style.display = 'block';
         startWebcamBtn.style.display = 'none';
         stopWebcamBtn.style.display = 'inline-block';
         webcamStatus.textContent = 'Connecting network tunnel...';
@@ -2381,7 +2686,7 @@
       webcamRenderImage.style.display = 'none';
       webcamRenderImage.src = '';
       webcamVideo.style.display = 'block';
-      document.getElementById('webcamScanGuide').style.display = 'block';
+      document.getElementById('webcamScanGuide').style.display = 'none';
       webcamHudCard.style.display = 'none';
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
