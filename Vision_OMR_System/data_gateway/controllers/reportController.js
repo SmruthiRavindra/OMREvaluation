@@ -86,6 +86,25 @@ export async function submitStudentResult(req, res) {
   }
 
   try {
+    // Enforce expected students count limit check
+    const sessionRes = await query("SELECT expected_students FROM exam_sessions WHERE id = $1", [session_id]);
+    if (sessionRes.rows.length > 0) {
+      const expected = parseInt(sessionRes.rows[0].expected_students, 10) || 0;
+      if (expected > 0) {
+        // Count other students already stored for this session
+        const countRes = await query(
+          "SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND usn != $2",
+          [session_id, usn]
+        );
+        const currentCount = parseInt(countRes.rows[0].count, 10) || 0;
+        if (currentCount >= expected) {
+          return res.status(400).json({
+            error: `Session limit reached. Cannot add more than ${expected} student results.`
+          });
+        }
+      }
+    }
+
     const result = await query(
       `INSERT INTO student_results 
         (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, status, created_at)

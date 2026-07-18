@@ -1256,16 +1256,36 @@
         window.location.href = '/login';
       });
 
+      async function checkSessionLimitBeforeProceeding() {
+        const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
+        try {
+          const countResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/pending-count`);
+          if (countResp.ok) {
+            const cData = await countResp.json();
+            if (cData.expected_students > 0 && cData.submitted_students >= cData.expected_students) {
+              alert(`This session limit has been reached (${cData.expected_students}/${cData.expected_students} students evaluated). If you need to evaluate more, please update the expected students count in session setup.`);
+              return false;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to verify session limit:', e);
+        }
+        return true;
+      }
+
       // Redesign navigation wiring
-      document.getElementById('btnGoToCapture').addEventListener('click', () => {
-        showPage(2);
+      document.getElementById('btnGoToCapture').addEventListener('click', async () => {
+        const allowed = await checkSessionLimitBeforeProceeding();
+        if (allowed) showPage(2);
       });
       document.getElementById('btnBackToSetup').addEventListener('click', () => {
         showPage(1);
       });
 
       // "Scan Another" click handler
-      document.getElementById('btnScanAnother').addEventListener('click', () => {
+      document.getElementById('btnScanAnother').addEventListener('click', async () => {
+        const allowed = await checkSessionLimitBeforeProceeding();
+        if (!allowed) return;
         if (!window._resultSaved) {
           // Show unsaved warning modal
           document.getElementById('unsavedWarningModal').style.display = 'flex';
@@ -1277,21 +1297,27 @@
       });
 
       // Unsaved warning buttons
-      document.getElementById('btnWarningSaveProceed').addEventListener('click', () => {
+      document.getElementById('btnWarningSaveProceed').addEventListener('click', async () => {
         document.getElementById('unsavedWarningModal').style.display = 'none';
         const submitBtn = document.getElementById('submitDbBtn');
         if (submitBtn && !submitBtn.disabled && submitBtn.style.display !== 'none') {
           submitBtn.click();
         }
-        showPage(2);
-        resetCaptureResults();
+        const allowed = await checkSessionLimitBeforeProceeding();
+        if (allowed) {
+          showPage(2);
+          resetCaptureResults();
+        }
       });
 
-      document.getElementById('btnWarningDiscardProceed').addEventListener('click', () => {
+      document.getElementById('btnWarningDiscardProceed').addEventListener('click', async () => {
         document.getElementById('unsavedWarningModal').style.display = 'none';
         window._resultSaved = true;
-        showPage(2);
-        resetCaptureResults();
+        const allowed = await checkSessionLimitBeforeProceeding();
+        if (allowed) {
+          showPage(2);
+          resetCaptureResults();
+        }
       });
 
       // Show initial page on load
@@ -2337,6 +2363,11 @@
           
           if (resp.ok) {
              successCount++;
+          } else {
+             const errData = await resp.json().catch(() => ({}));
+             if (errData && errData.error) {
+               alert(`Failed to save result for ${currentUsn}: ${errData.error}`);
+             }
           }
         }
         
