@@ -616,8 +616,10 @@
 
     // Delete User Account
     async function deleteAccount(id, name) {
+      if (window._deletingAccount) return;
       if (!confirm(`Are you sure you want to delete user account "${name}"?`)) return;
       try {
+        window._deletingAccount = true;
         const resp = await fetch(`${GATEWAY_URL}/api/users/${id}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
@@ -630,6 +632,8 @@
         loadStats();
       } catch(err) {
         showAlert(err.message, true);
+      } finally {
+        window._deletingAccount = false;
       }
     }
 
@@ -748,7 +752,7 @@
           throw new Error(resData.error || 'Failed to delete session.');
         }
         showAlert('✅ Session deleted successfully.');
-        await fetchSessions(); // Refresh table
+        await loadSessions(); // Refresh table
       } catch(err) {
         showAlert(`❌ Error: ${err.message}`, true);
       } finally {
