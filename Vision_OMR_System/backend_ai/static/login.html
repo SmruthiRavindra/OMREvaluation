@@ -215,8 +215,7 @@
   </div>
 
   <script>
-    // Detect Node.js Data Gateway URL based on current server hostname
-    const GATEWAY_URL = window.location.protocol + '//' + window.location.hostname + ':3000';
+    const GATEWAY_URL = window.location.origin;
 
     const loginForm = document.getElementById('loginForm');
     const usernameInput = document.getElementById('usernameInput');

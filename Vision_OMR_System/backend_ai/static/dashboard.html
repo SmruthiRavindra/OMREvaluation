@@ -1113,10 +1113,9 @@
   </main>
 
   <script>
-    // Automatically detect the gateway URL for local dev (both laptop and mobile over Wi-Fi) and production
     const GATEWAY_URL = window.location.hostname.includes('github.io')
       ? 'https://omrevaluation-2.onrender.com'
-      : `http://${window.location.hostname}:3000`;
+      : window.location.origin;
     const WEBSOCKET_BACKEND_URL = 'wss://omrevaluation-backend.onrender.com'; // Configure this to your production FastAPI backend URL for live webcam scanning
 
     // Enforce authentication check at startup
