@@ -4,6 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - Vision OMR Portal</title>
+  <script>
+    (function() {
+      const token = localStorage.getItem('session_token');
+      const userRole = localStorage.getItem('user_role');
+      if (!token || userRole !== 'admin') {
+        localStorage.clear();
+        window.location.replace('/login');
+      } else {
+        document.documentElement.classList.add('authenticated');
+      }
+    })();
+  </script>
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,6 +43,9 @@
     }
 
     body {
+      display: none;
+    }
+    html.authenticated body {
       font-family: 'Inter', -apple-system, sans-serif;
       background-color: var(--background);
       color: var(--text);
