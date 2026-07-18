@@ -910,6 +910,7 @@
                 <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 PDF Summary</button>
               </div>
               <button class="btn btn-secondary" id="downloadDetailedPdfBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📑 PDF Session Report (Detailed with Images)</button>
+              <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
             </div>
           </div>
 
@@ -2905,9 +2906,6 @@
       tabUploadMode.classList.remove('active');
       webcamModeContainer.style.display = 'block';
       uploadModeContainer.style.display = 'none';
-      if (!localStream) {
-        startWebcamBtn.click();
-      }
     });
     
     startWebcamBtn.addEventListener('click', async () => {
