@@ -369,10 +369,14 @@ async function generatePDF(res, session, results, stats, detail = false) {
   currentY += 10;
 
   // Table Header
-  const cols = { usn: 50, score: 180, total: 240, percent: 300, status: 380 };
+  const cols = { usn: 50, correct: 160, incorrect: 205, unanswered: 250, multiple: 295, score: 340, total: 385, percent: 430, status: 495 };
   
-  doc.fontSize(10).fillColor('#111827');
+  doc.fontSize(9).fillColor('#111827');
   doc.text('USN', cols.usn, currentY);
+  doc.text('Correct', cols.correct, currentY);
+  doc.text('Wrong', cols.incorrect, currentY);
+  doc.text('Blank', cols.unanswered, currentY);
+  doc.text('Multi', cols.multiple, currentY);
   doc.text('Score', cols.score, currentY);
   doc.text('Total', cols.total, currentY);
   doc.text('%', cols.percent, currentY);
@@ -391,6 +395,10 @@ async function generatePDF(res, session, results, stats, detail = false) {
       // Re-draw header on new page
       doc.fillColor('#111827');
       doc.text('USN', cols.usn, currentY);
+      doc.text('Correct', cols.correct, currentY);
+      doc.text('Wrong', cols.incorrect, currentY);
+      doc.text('Blank', cols.unanswered, currentY);
+      doc.text('Multi', cols.multiple, currentY);
       doc.text('Score', cols.score, currentY);
       doc.text('Total', cols.total, currentY);
       doc.text('%', cols.percent, currentY);
@@ -405,19 +413,30 @@ async function generatePDF(res, session, results, stats, detail = false) {
     const status = percent >= PASS_THRESHOLD ? 'PASS' : 'FAIL';
     
     // Status color
-    if (status === 'PASS') doc.fillColor('#059669'); // Green
-    else if (status === 'FAIL') doc.fillColor('#DC2626'); // Red
-    else doc.fillColor('#6B7280'); // Gray
+    if (r.status === 'ABSENT') {
+      doc.fillColor('#6B7280'); // Gray
+    } else if (status === 'PASS') {
+      doc.fillColor('#059669'); // Green
+    } else {
+      doc.fillColor('#DC2626'); // Red
+    }
 
     doc.text(r.usn, cols.usn, currentY);
     doc.fillColor('#4b5563'); // Reset text color
     
     if (r.status === 'ABSENT') {
+      doc.text('-', cols.correct, currentY);
+      doc.text('-', cols.incorrect, currentY);
+      doc.text('-', cols.unanswered, currentY);
+      doc.text('-', cols.multiple, currentY);
       doc.text('-', cols.score, currentY);
       doc.text('-', cols.total, currentY);
       doc.text('ABSENT', cols.percent, currentY);
-      doc.fillColor('#6B7280'); // Gray for absent
     } else {
+      doc.text((r.correct ?? 0).toString(), cols.correct, currentY);
+      doc.text((r.incorrect ?? 0).toString(), cols.incorrect, currentY);
+      doc.text((r.unanswered ?? 0).toString(), cols.unanswered, currentY);
+      doc.text((r.multiple_marked ?? 0).toString(), cols.multiple, currentY);
       doc.text(r.score.toString(), cols.score, currentY);
       doc.text(r.total.toString(), cols.total, currentY);
       doc.text(`${percent.toFixed(2)}%`, cols.percent, currentY);
@@ -425,7 +444,7 @@ async function generatePDF(res, session, results, stats, detail = false) {
       else doc.fillColor('#DC2626');
     }
     
-    doc.text(status, cols.status, currentY);
+    doc.text(r.status === 'ABSENT' ? 'ABSENT' : status, cols.status, currentY);
     doc.fillColor('#4b5563');
 
     currentY += 20;

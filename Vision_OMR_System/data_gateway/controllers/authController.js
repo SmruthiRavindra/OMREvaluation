@@ -97,12 +97,17 @@ export async function logout(req, res) {
 // ── Auth Middleware ──────────────────────────────────────────────────────────
 
 export async function verifyAuth(req, res, next) {
+  let token = null;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized. Auth token missing.' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query.token) {
+    token = req.query.token;
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized. Auth token missing.' });
+  }
   try {
     // Find active, unexpired session
     const sessionRes = await pool.query(

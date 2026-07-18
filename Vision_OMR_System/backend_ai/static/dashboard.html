@@ -888,6 +888,12 @@
           <div class="card" style="margin-bottom: 20px;">
             <div class="card-header">🗄️ Step 4: Review & Submit</div>
             <div class="card-body">
+              <!-- Professor Signature Option -->
+              <div style="margin-bottom: 12px;">
+                <label for="facultyNameInput" style="display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">✍️ Professor Name (for PDF Signature):</label>
+                <input type="text" id="facultyNameInput" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); outline: none; box-sizing: border-box;" />
+              </div>
+
               <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: var(--amber); font-size: 13px;">
                 ✋ Review & Confirm Before Saving
               </button>
@@ -904,8 +910,6 @@
                 <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 PDF Summary</button>
               </div>
               <button class="btn btn-secondary" id="downloadDetailedPdfBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📑 PDF Session Report (Detailed with Images)</button>
-              <button class="btn btn-secondary" id="viewDbBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📋 View Database Records</button>
-              <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
             </div>
           </div>
 
@@ -982,7 +986,6 @@
               <div id="pdfExportContainer" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
                 <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Export Sheet Report</h4>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <input type="text" id="facultyNameInput" placeholder="Faculty Signature Name" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; font-family: inherit;">
                   <button id="downloadPdfBtn" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
                     📥 Download Sheet PDF
                   </button>
@@ -2509,17 +2512,20 @@
 
     document.getElementById('downloadExcelBtn').addEventListener('click', () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
-      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=excel`, `OMR_Report_${sessionId}.xlsx`);
+      const token = localStorage.getItem('session_token');
+      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=excel&token=${encodeURIComponent(token)}`, '_blank');
     });
 
     document.getElementById('downloadPdfBtn').addEventListener('click', () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
-      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=false`, `OMR_Report_${sessionId}.pdf`);
+      const token = localStorage.getItem('session_token');
+      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=false&token=${encodeURIComponent(token)}`, '_blank');
     });
 
     document.getElementById('downloadDetailedPdfBtn').addEventListener('click', () => {
       const sessionId = document.getElementById('sessionIdInput').value.trim() || 'default';
-      fetchAndDownload(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=true`, `OMR_Detailed_Report_${sessionId}.pdf`);
+      const token = localStorage.getItem('session_token');
+      window.open(`${GATEWAY_URL}/api/reports/download/${sessionId}?format=pdf&detail=true&token=${encodeURIComponent(token)}`, '_blank');
     });
 
     document.getElementById('manualCaptureBtn').addEventListener('click', () => {
@@ -3028,8 +3034,8 @@
       }
     });
 
-    // ── View Database button ──────────────────────────────────
-    document.getElementById('viewDbBtn').addEventListener('click', async () => {
+    const viewDbBtn = document.getElementById('viewDbBtn');
+    if (viewDbBtn) viewDbBtn.addEventListener('click', async () => {
       const panel = document.getElementById('dbViewerPanel');
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
       if (panel.style.display === 'none') return;
