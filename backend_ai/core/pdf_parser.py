@@ -9,7 +9,7 @@ import fitz  # PyMuPDF
 import cv2
 import numpy as np
 
-def extract_pages_from_pdf(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 50) -> list[np.ndarray]:
+def extract_pages_from_pdf(pdf_bytes: bytes, dpi: int = 150, max_pages: int = 100) -> list[np.ndarray]:
     """
     Parse a PDF document in memory using PyMuPDF (fitz).
     Returns a list of OpenCV BGR matrices, one per page.
@@ -19,7 +19,7 @@ def extract_pages_from_pdf(pdf_bytes: bytes, dpi: int = 200, max_pages: int = 50
     pdf_bytes : bytes
         Raw PDF file bytes.
     dpi : int
-        The DPI at which to render the PDF pages. 200 is generally good for OMR.
+        The DPI at which to render the PDF pages. 150 is optimized for fast parsing and high OMR accuracy.
     max_pages : int
         Security limit to prevent massive PDFs from crashing the server.
         

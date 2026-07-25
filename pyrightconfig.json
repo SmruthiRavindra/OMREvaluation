@@ -1,8 +1,8 @@
 {
-  "venvPath": "Vision_OMR_System/backend_ai",
+  "venvPath": "backend_ai",
   "venv": "venv",
   "extraPaths": [
-    "Vision_OMR_System/backend_ai",
-    "Vision_OMR_System/backend_ai/venv/Lib/site-packages"
+    "backend_ai",
+    "backend_ai/venv/Lib/site-packages"
   ]
 }

@@ -570,23 +570,7 @@ async function generatePDF(res, session, results, stats, detail = false) {
         }
       }
 
-      // Add annotated image page if available
-      if (r.annotated_image) {
-        try {
-          doc.addPage();
-          
-          doc.fontSize(14).fillColor('#4F46E5').text(`Annotated OMR Scan — ${r.usn}`, 50, 40);
-          doc.moveTo(50, 55).lineTo(550, 55).strokeColor('#e5e7eb').stroke();
-
-          const base64Data = r.annotated_image.replace(/^data:image\/\w+;base64,/, '');
-          const imgBuffer = Buffer.from(base64Data, 'base64');
-          
-          doc.image(imgBuffer, 50, 75, { width: 500, height: 680 });
-        } catch (imgErr) {
-          console.error(`Failed to embed OMR image in PDF for ${r.usn}:`, imgErr.message);
-          doc.fontSize(12).fillColor('#DC2626').text(`[Error rendering OMR sheet scan image: ${imgErr.message}]`, 50, 100);
-        }
-      }
+      // Detailed grading report per student without images
     }
   }
 

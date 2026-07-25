@@ -753,7 +753,7 @@
               <div class="upload-zone" id="uploadZone">
                 <div class="upload-icon">📄</div>
                 <div class="upload-title">Drop your OMR sheet here</div>
-                <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 50 pages</div>
+                <div class="upload-hint">or click to browse · JPEG / PNG / PDF · max 100 pages</div>
                 <input type="file" id="fileInput" accept="image/jpeg,image/png,image/jpg,application/pdf" multiple>
                 <div class="file-preview" id="filePreview" style="display:none;">
                   <img id="previewImg" alt="Preview" style="display:none;">
@@ -902,6 +902,21 @@
         </div>
       </div>
 
+      <!-- Results View Batch Navigator Bar -->
+      <div id="resultsBatchNavCard" style="display: none; margin-top: 16px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--accent); background: var(--bg-card); box-shadow: var(--shadow-sm);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 14px; font-weight: 700; color: var(--accent);">📑 Batch Sheet Review Selector:</span>
+            <span id="resultsBatchBadge" style="background: var(--accent); color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;">0 / 0 Sheets</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex: 1; max-width: 480px;">
+            <button class="btn btn-secondary" id="btnPrevBatchSheet" style="padding: 6px 12px; font-size: 12px; width: auto;">◀ Prev</button>
+            <select id="resultsBatchSheetSelect" style="flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-size: 12px; font-weight: 600; cursor: pointer;"></select>
+            <button class="btn btn-secondary" id="btnNextBatchSheet" style="padding: 6px 12px; font-size: 12px; width: auto;">Next ▶</button>
+          </div>
+        </div>
+      </div>
+
       <div class="results-grid" style="margin-top: 16px;">
         <!-- Left: Stats, Score, Grading, Submit -->
         <div class="right-panel">
@@ -915,11 +930,16 @@
                 <input type="text" id="facultyNameInput" value="Prof. Faculty" style="width: 100%; padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); outline: none; box-sizing: border-box;" />
               </div>
 
-              <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 12px; background: var(--amber); font-size: 13px;">
+              <!-- Individual Student Sheet PDF Report with Photo -->
+              <button class="btn btn-secondary" id="downloadStudentSheetPdfBtn" style="width: 100%; font-size: 12px; font-weight: 700; margin-bottom: 12px; padding: 10px; background: var(--bg-input); border: 1px solid var(--accent); color: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
+                📥 Download Student Sheet Report (PDF)
+              </button>
+
+              <button class="btn btn-primary" id="reviewConfirmBtn" disabled style="margin-bottom: 8px; background: var(--amber); font-size: 13px;">
                 ✋ Review & Confirm Before Saving
               </button>
-              <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: var(--green); display: none;">
-                📤 Submit Confirmed Result to DB
+              <button class="btn btn-primary" id="submitDbBtn" disabled style="margin-bottom: 12px; background: var(--green);">
+                📤 Submit Result to DB
               </button>
               <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
               
@@ -927,6 +947,7 @@
                 <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Excel Summary</button>
                 <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 PDF Summary</button>
               </div>
+              <button class="btn btn-secondary" id="downloadDetailedPdfBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📑 PDF Session Report</button>
               <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
             </div>
           </div>
@@ -1094,8 +1115,10 @@
 
       <!-- Action Bar for Page 3 -->
       <div class="action-bar">
-        <button class="btn btn-secondary" id="btnScanAnother" style="width: auto; padding: 10px 20px;">← Scan Another</button>
-        <div></div>
+        <button class="btn btn-secondary" id="btnScanAnother" style="width: auto; padding: 10px 20px;">← Scan Another Sheet</button>
+        <button class="btn btn-primary" id="btnStartNewSession" style="width: auto; padding: 10px 24px; background: var(--green); font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+          ➕ Start New Session
+        </button>
       </div>
     </div>
 
@@ -1327,6 +1350,46 @@
         }
       });
 
+      // "Start New Session" click handler
+      document.getElementById('btnStartNewSession').addEventListener('click', () => {
+        if (resultData && !window._resultSaved) {
+          const confirmLoss = confirm("Are you sure you want to start a new session? Any unsaved results in the current session will be lost unless submitted to DB.");
+          if (!confirmLoss) return;
+        }
+
+        // Unlock Step 1 inputs
+        document.getElementById('sessionIdInput').disabled = false;
+        document.getElementById('subjectInput').disabled = false;
+        document.getElementById('sectionInput').disabled = false;
+        document.getElementById('expectedStudentsInput').disabled = false;
+        document.getElementById('absentUsnsInput').disabled = false;
+        document.getElementById('rosterUsnsInput').disabled = false;
+        document.getElementById('useRosterOrderCheckbox').disabled = false;
+
+        // Reset Step 1 Init Button & Status
+        const initBtn = document.getElementById('initSessionBtn');
+        initBtn.disabled = false;
+        initBtn.textContent = '🚀 Initialize Session & Save Absentees';
+        const initStatus = document.getElementById('initSessionStatus');
+        if (initStatus) initStatus.textContent = '';
+
+        // Reset session state variables
+        window._sessionInitialized = false;
+        window._resultSaved = true;
+        window.batchResults = null;
+        resultData = null;
+
+        // Reset Step 2 navigation state
+        document.getElementById('btnGoToCapture').disabled = true;
+
+        // Reset upload zone & clear results
+        const clearBtn = document.getElementById('clearBtn');
+        if (clearBtn) clearBtn.click();
+
+        // Navigate back to Step 1 (Setup)
+        showPage(1);
+      });
+
       // Unsaved warning buttons
       document.getElementById('btnWarningSaveProceed').addEventListener('click', async () => {
         document.getElementById('unsavedWarningModal').style.display = 'none';
@@ -1429,8 +1492,8 @@
           showError('Please upload image files (JPEG/PNG) or a PDF.');
           return;
         }
-        if (file.size > 50 * 1024 * 1024) {
-          showError('File too large. Maximum size is 50 MB.');
+        if (file.size > 100 * 1024 * 1024) {
+          showError('File too large. Maximum size is 100 MB.');
           return;
         }
       }
@@ -1613,7 +1676,7 @@
       uploadZone.classList.remove('has-file');
       evaluateBtn.disabled = true;
       clearBtn.style.display = 'none';
-      const studentSheetBtn = document.getElementById('downloadStudentSheetBtn');
+      const studentSheetBtn = document.getElementById('downloadStudentSheetPdfBtn');
       if (studentSheetBtn) studentSheetBtn.style.display = 'none';
       filePreview.style.display = 'none';
       document.querySelector('.upload-icon').style.display = '';
@@ -1798,10 +1861,8 @@
                   if (task.results.length !== targetCount) {
                     document.getElementById('pageCountAlertMsg').textContent = `Expected ${targetCount} sheets (${expectedCount} students - ${absentees.length} absent), but processed ${task.results.length} pages!`;
                     pageCountAlert.style.display = 'block';
-                    alert(`Warning: Page count mismatch! Expected ${targetCount} but got ${task.results.length}.`);
                   } else {
                     pageCountAlert.style.display = 'none';
-                    alert(`Batch processing complete! Processed ${task.results.length} pages perfectly matching expected count. Click "Submit to Database" to save all students.`);
                   }
                   
                   // Update pending count
@@ -1938,33 +1999,75 @@
     }
 
     // setupBatchNavigator — initializes page navigator selector when a PDF/multiple JPEGs complete
-    function setupBatchNavigator() {
+    function setupBatchNavigator(activeIdx = 0) {
       const container = document.getElementById('batchNavigatorContainer');
       const select = document.getElementById('batchSheetSelect');
       const badge = document.getElementById('batchCountBadge');
+
+      const resultsNavCard = document.getElementById('resultsBatchNavCard');
+      const resultsSelect = document.getElementById('resultsBatchSheetSelect');
+      const resultsBadge = document.getElementById('resultsBatchBadge');
+      const btnPrev = document.getElementById('btnPrevBatchSheet');
+      const btnNext = document.getElementById('btnNextBatchSheet');
       
       if (window.batchResults && window.batchResults.length > 0) {
         container.style.display = 'block';
-        badge.textContent = `${window.batchResults.length} sheets`;
+        if (resultsNavCard) resultsNavCard.style.display = 'block';
+        
+        const total = window.batchResults.length;
+        badge.textContent = `${total} sheets`;
+        if (resultsBadge) resultsBadge.textContent = `${activeIdx + 1} / ${total} Sheets`;
         
         select.innerHTML = '';
+        if (resultsSelect) resultsSelect.innerHTML = '';
+
         window.batchResults.forEach((res, idx) => {
-          const opt = document.createElement('option');
-          opt.value = idx;
           const score = res.score_report ? `${res.score_report.score_percent.toFixed(1)}%` : '--';
           const usn = res.usn || 'UNKNOWN';
-          opt.textContent = `Sheet ${idx + 1}: USN ${usn} (Score: ${score})`;
-          select.appendChild(opt);
+          const label = `Sheet ${idx + 1}: USN ${usn} (Score: ${score})`;
+
+          const opt1 = document.createElement('option');
+          opt1.value = idx;
+          opt1.textContent = label;
+          if (idx === activeIdx) opt1.selected = true;
+          select.appendChild(opt1);
+
+          if (resultsSelect) {
+            const opt2 = document.createElement('option');
+            opt2.value = idx;
+            opt2.textContent = label;
+            if (idx === activeIdx) opt2.selected = true;
+            resultsSelect.appendChild(opt2);
+          }
         });
         
-        // Switch page handler
-        select.onchange = (e) => {
-          const idx = parseInt(e.target.value);
+        const selectSheetHandler = (idx) => {
+          if (idx < 0 || idx >= total) return;
           resultData = window.batchResults[idx];
+          select.value = idx;
+          if (resultsSelect) resultsSelect.value = idx;
+          if (resultsBadge) resultsBadge.textContent = `${idx + 1} / ${total} Sheets`;
           renderResults(resultData);
         };
+
+        select.onchange = (e) => selectSheetHandler(parseInt(e.target.value));
+        if (resultsSelect) resultsSelect.onchange = (e) => selectSheetHandler(parseInt(e.target.value));
+        
+        if (btnPrev) {
+          btnPrev.onclick = () => {
+            const currentIdx = parseInt(resultsSelect ? resultsSelect.value : select.value) || 0;
+            if (currentIdx > 0) selectSheetHandler(currentIdx - 1);
+          };
+        }
+        if (btnNext) {
+          btnNext.onclick = () => {
+            const currentIdx = parseInt(resultsSelect ? resultsSelect.value : select.value) || 0;
+            if (currentIdx < total - 1) selectSheetHandler(currentIdx + 1);
+          };
+        }
       } else {
         container.style.display = 'none';
+        if (resultsNavCard) resultsNavCard.style.display = 'none';
       }
     }
 
@@ -2146,8 +2249,8 @@
     function renderResults(data) {
       window._resultSaved = false;
       showPage(3);
-      const studentSheetBtn = document.getElementById('downloadStudentSheetBtn');
-      if (studentSheetBtn) studentSheetBtn.style.display = 'block';
+      const studentSheetBtn = document.getElementById('downloadStudentSheetPdfBtn');
+      if (studentSheetBtn) studentSheetBtn.style.display = 'flex';
       // Stats
       document.getElementById('filledCount').textContent = data.filled_count;
       document.getElementById('emptyCount').textContent = data.empty_count;
@@ -2176,10 +2279,10 @@
         reviewAlert.classList.remove('show');
       }
 
-       // Enable review button (NOT submit directly)
+       // Enable review & submit buttons
       document.getElementById('reviewConfirmBtn').disabled = false;
-      document.getElementById('submitDbBtn').style.display = 'none';
-      document.getElementById('submitDbBtn').disabled = true;
+      document.getElementById('submitDbBtn').style.display = '';
+      document.getElementById('submitDbBtn').disabled = false;
       document.getElementById('confirmationBadge').style.display = 'none';
       document.getElementById('dbStatus').textContent = '';
       window._teacherConfirmed = false;
@@ -2656,7 +2759,7 @@
       renderResults(resultData);
     });
 
-    document.getElementById('downloadStudentSheetBtn').addEventListener('click', () => {
+    document.getElementById('downloadStudentSheetPdfBtn').addEventListener('click', () => {
       if (!resultData || !resultData.score_report) {
         alert("No OMR scan result is currently loaded.");
         return;
@@ -2992,9 +3095,10 @@
       document.getElementById('confirmationBadge').style.display = 'block';
       document.getElementById('submitDbBtn').style.display = '';
       document.getElementById('submitDbBtn').disabled = false;
-      document.getElementById('reviewConfirmBtn').innerHTML = '✅ Reviewed — Click to Re-review';
+      document.getElementById('reviewConfirmBtn').innerHTML = '✅ Reviewed';
       
       closeConfirmModal();
+      // NOTE: DB submit is manual — click "Submit Result to DB" to save
     });
 
     // ── Webcam & WebSocket Controller ─────────────────────
@@ -3705,7 +3809,7 @@
       doc.save(`OMR_Evaluation_Report_${usn}.pdf`);
     }
 
-    document.getElementById('downloadPdfBtn').addEventListener('click', downloadReportPDF);
+    // downloadStudentSheetPdfBtn is bound above (line 2665) to generate individual student PDF with photo
 
   </script>
 </body>

@@ -364,7 +364,7 @@ async def evaluate_batch(
         
         # 1. Parse File
         if file.content_type == "application/pdf":
-            images = extract_pages_from_pdf(contents, dpi=200, max_pages=50)
+            images = extract_pages_from_pdf(contents, dpi=150, max_pages=100)
             if not images:
                 raise ValueError("Could not extract any pages from PDF.")
         elif file.content_type.startswith("image/"):
@@ -481,7 +481,7 @@ def run_batch_evaluation_sync(
         all_sheets = []
         for filename, content in files_data:
             if filename.lower().endswith(".pdf"):
-                images = extract_pages_from_pdf(content, dpi=200, max_pages=50)
+                images = extract_pages_from_pdf(content, dpi=150, max_pages=100)
                 for p_idx, img in enumerate(images):
                     _, buffer = cv2.imencode(".jpg", img)
                     all_sheets.append((f"{filename}_page_{p_idx+1}.jpg", buffer.tobytes()))
