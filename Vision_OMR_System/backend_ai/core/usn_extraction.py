@@ -356,17 +356,33 @@ def extract_usn_from_roi(
     else:
         gray = roi.copy()
 
-    # ── 3. Optimized Single-Stage OCR (scale 2.0 with CLAHE & adaptive threshold) ──
+    # ── 3. Fast Stage 1: PyTesseract (~100ms) ──────────────────────────────────
+    try:
+        import pytesseract
+        processed_tess = _preprocess_for_ocr(gray, scale=2.0, method="adaptive")
+        tess_text = pytesseract.image_to_string(
+            processed_tess,
+            config="--psm 7 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        ).strip().upper()
+        if tess_text:
+            corrected = correct_usn_format(tess_text)
+            if corrected != "UNKNOWN":
+                print(f"[USN Tesseract] '{corrected}' (raw='{tess_text}')")
+                return corrected
+    except Exception as e:
+        print(f"[USN Tesseract Error] {e}")
+
+    # ── 4. Stage 2 Fallback: EasyOCR (~2.5s) ───────────────────────────────────
     try:
         processed = _preprocess_for_ocr(gray, scale=2.0, method="clahe")
         raw_text = _run_easyocr_on_image(processed)
         if raw_text:
             corrected = correct_usn_format(raw_text)
             if corrected != "UNKNOWN":
-                print(f"[USN EasyOCR] '{corrected}' (raw='{raw_text}', scale=2.0)")
+                print(f"[USN EasyOCR Fallback] '{corrected}' (raw='{raw_text}')")
                 return corrected
     except Exception as exc:
         print(f"[USN EasyOCR Error] {exc}")
 
-    print("[USN EasyOCR] No valid USN extracted")
+    print("[USN OCR] No valid USN extracted")
     return "UNKNOWN"
