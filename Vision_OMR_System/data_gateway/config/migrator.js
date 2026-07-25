@@ -46,15 +46,31 @@ export async function runMigrations() {
       console.log(`[DB Migrator] Applying migration: ${file}`);
       const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
       
-      // Execute migration
-      await pool.query(sql);
+      const client = await pool.connect();
+      const notices = [];
+      const onNotice = (msg) => {
+        if (msg && msg.message) {
+          console.log(`[DB Notice] ${msg.message}`);
+          notices.push(msg.message);
+        }
+      };
+      client.on('notice', onNotice);
       
-      // Mark as applied
-      await pool.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
-      console.log(`[DB Migrator] ✅ Applied: ${file}`);
-      applied++;
+      try {
+        await client.query(sql);
+        await client.query('INSERT INTO schema_migrations (filename) VALUES ($1)', [file]);
+        console.log(`[DB Migrator] ✅ Applied: ${file}`);
+        applied++;
+
+        if (notices.length > 0) {
+          const noticeFile = path.join(__dirname, '../.admin_credentials_ONE_TIME.txt');
+          fs.writeFileSync(noticeFile, notices.join('\n'), 'utf8');
+        }
+      } finally {
+        client.removeListener('notice', onNotice);
+        client.release();
+      }
     } catch (err) {
-      // Log per-migration error but continue — don't crash the server
       console.warn(`[DB Migrator] ⚠️ Migration ${file} failed (may already be applied): ${err.message}`);
       failed++;
     }

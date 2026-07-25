@@ -3,6 +3,9 @@
 
 BEGIN;
 
+-- 0. Enable pgcrypto extension BEFORE PL/pgSQL block DECLARE section runs
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- 1. Rename token to token_hash and widen column for user_sessions
 ALTER TABLE user_sessions RENAME COLUMN token TO token_hash;
 
@@ -24,20 +27,12 @@ BEGIN
     RAISE NOTICE 'PLEASE RECORD THESE PASSWORDS IMMEDIATELY!';
     RAISE NOTICE '=======================================================';
 
-    CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
     INSERT INTO users (username, password_hash, salt, role)
     VALUES ('admin', crypt(admin_pass, gen_salt('bf', 12)), '', 'admin');
 
     INSERT INTO users (username, password_hash, salt, role)
     VALUES ('faculty', crypt(faculty_pass, gen_salt('bf', 12)), '', 'faculty');
-
-    -- Write one-time credentials file
-    EXECUTE format('COPY (SELECT %L || E''\n'' || %L) TO %L', 
-        'Admin Username: admin | Password: ' || admin_pass,
-        'Faculty Username: faculty | Password: ' || faculty_pass,
-        '/app/.admin_credentials_ONE_TIME.txt'
-    );
 END $$;
 
 COMMIT;
+

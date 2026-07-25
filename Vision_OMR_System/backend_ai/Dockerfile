@@ -23,11 +23,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install --default-timeout=1000 --no-cache-dir -r requirements.txt && \
-    python -c "import easyocr; easyocr.Reader(['en'], gpu=False)"
+    (python -c "import easyocr; easyocr.Reader(['en'], gpu=False)" || true)
 
 # Copy application source
 COPY . .
-
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 

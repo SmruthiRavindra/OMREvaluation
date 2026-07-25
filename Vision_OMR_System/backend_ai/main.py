@@ -13,6 +13,7 @@ Pipeline:
 
 import time
 import os
+import json
 import base64
 import io
 import uuid
@@ -20,6 +21,14 @@ import asyncio
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
+
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
+    RealDictCursor = None
 
 # pyrefly: ignore [missing-import]
 import cv2
@@ -52,15 +61,6 @@ app = FastAPI(
     version="2.0.0",
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
-
-import json
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    HAS_PSYCOPG2 = True
-except ImportError:
-    HAS_PSYCOPG2 = False
-    RealDictCursor = None
 
 def get_db_connection():
     if not HAS_PSYCOPG2:

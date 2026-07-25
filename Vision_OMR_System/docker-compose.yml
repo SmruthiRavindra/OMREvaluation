@@ -24,8 +24,6 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Auto-run migrations on first start
-      - ./data_gateway/config/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U omr_user -d omr_db"]
       interval: 5s
