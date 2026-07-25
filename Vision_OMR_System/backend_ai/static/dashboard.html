@@ -923,14 +923,10 @@
               </button>
               <div id="confirmationBadge" style="display:none; background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #34d399; padding: 8px 12px; border-radius: 8px; font-size: 11px; text-align: center; margin-bottom: 12px; font-weight: 600;">✅ Teacher confirmed — ready to submit</div>
               
-              <button class="btn btn-secondary" id="downloadStudentSheetBtn" style="margin-bottom: 8px; width: 100%; font-size: 11px; border-color: var(--border); display: none;">
-                ⬇️ Download Student Sheet Report (PDF)
-              </button>
               <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                 <button class="btn btn-secondary" id="downloadExcelBtn" style="flex: 1; font-size: 11px;">📊 Excel Summary</button>
                 <button class="btn btn-secondary" id="downloadPdfBtn" style="flex: 1; font-size: 11px;">📄 PDF Summary</button>
               </div>
-              <button class="btn btn-secondary" id="downloadDetailedPdfBtn" style="width: 100%; font-size: 11px; margin-bottom: 8px;">📑 PDF Session Report (Detailed with Images)</button>
               <div id="dbStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 4px; text-align: center;"></div>
             </div>
           </div>
@@ -1002,16 +998,6 @@
 
               <div class="alert warning" id="reviewAlert" style="margin-top: 16px;">
                 ⚠️ Manual review required — some bubbles are ambiguous.
-              </div>
-              
-              <!-- PDF Export Section -->
-              <div id="pdfExportContainer" style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
-                <h4 style="font-size: 11px; color: var(--text-primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Export Sheet Report</h4>
-                <div style="display: flex; flex-direction: column; gap: 8px;">
-                  <button id="downloadPdfBtn" class="btn btn-primary" style="width: 100%; padding: 8px 12px; font-size: 12px; font-weight: 600; background: var(--accent); display: flex; align-items: center; justify-content: center; gap: 6px;">
-                    📥 Download Sheet PDF
-                  </button>
-                </div>
               </div>
             </div>
           </div>

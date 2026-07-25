@@ -12,6 +12,7 @@ Pipeline:
 """
 
 import time
+import os
 import base64
 import io
 import uuid
@@ -52,60 +53,78 @@ app = FastAPI(
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
 
-import os
 import json
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
+    RealDictCursor = None
 
 def get_db_connection():
-    return psycopg2.connect(
-        host=os.getenv("PGHOST", "localhost"),
-        port=int(os.getenv("PGPORT", 5432)),
-        dbname=os.getenv("PGDATABASE", "omr_db"),
-        user=os.getenv("PGUSER", "postgres"),
-        password=os.getenv("PGPASSWORD", "postgres")
-    )
+    if not HAS_PSYCOPG2:
+        return None
+    try:
+        return psycopg2.connect(
+            host=os.getenv("PGHOST", "localhost"),
+            port=int(os.getenv("PGPORT", 5432)),
+            dbname=os.getenv("PGDATABASE", "omr_db"),
+            user=os.getenv("PGUSER", "postgres"),
+            password=os.getenv("PGPASSWORD", "postgres")
+        )
+    except Exception:
+        return None
 
 def get_answer_key_for_session(session_id: Optional[str], version: Optional[str] = None) -> Optional[Dict[int, str]]:
     if not session_id:
         return None
     ver = (version or "DEFAULT").upper()
-    try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT version, answers FROM exam_versions WHERE session_id = %s",
-                (session_id,)
-            )
-            rows = cur.fetchall()
-        conn.close()
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT version, answers FROM exam_versions WHERE session_id = %s",
+                    (session_id,)
+                )
+                rows = cur.fetchall()
+            conn.close()
 
-        if not rows:
-            return None
+            if rows:
+                # Look for explicit version match
+                for r in rows:
+                    if r['version'].upper() == ver:
+                        raw_ans = r['answers']
+                        if isinstance(raw_ans, str):
+                            raw_ans = json.loads(raw_ans)
+                        return {int(k): str(v).upper() for k, v in raw_ans.items()}
 
-        # Look for explicit version match
-        for r in rows:
-            if r['version'].upper() == ver:
-                raw_ans = r['answers']
-                if isinstance(raw_ans, str):
-                    raw_ans = json.loads(raw_ans)
-                return {int(k): str(v).upper() for k, v in raw_ans.items()}
+                # Fallback to DEFAULT or first available version
+                for r in rows:
+                    if r['version'].upper() in ("DEFAULT", "A"):
+                        raw_ans = r['answers']
+                        if isinstance(raw_ans, str):
+                            raw_ans = json.loads(raw_ans)
+                        return {int(k): str(v).upper() for k, v in raw_ans.items()}
 
-        # Fallback to DEFAULT or first available version
-        for r in rows:
-            if r['version'].upper() in ("DEFAULT", "A"):
-                raw_ans = r['answers']
-                if isinstance(raw_ans, str):
-                    raw_ans = json.loads(raw_ans)
-                return {int(k): str(v).upper() for k, v in raw_ans.items()}
+                first_ans = rows[0]['answers']
+                if isinstance(first_ans, str):
+                    first_ans = json.loads(first_ans)
+                return {int(k): str(v).upper() for k, v in first_ans.items()}
+        except Exception as e:
+            print(f"[DB Error get_answer_key_for_session]: {e}")
 
-        first_ans = rows[0]['answers']
-        if isinstance(first_ans, str):
-            first_ans = json.loads(first_ans)
-        return {int(k): str(v).upper() for k, v in first_ans.items()}
-    except Exception as e:
-        print(f"[DB Error get_answer_key_for_session]: {e}")
-        return None
+    # Fallback to in-memory store
+    if session_id in _fallback_answer_keys:
+        session_val = _fallback_answer_keys[session_id]
+        if ver in session_val:
+            return session_val[ver]
+        if "DEFAULT" in session_val:
+            return session_val["DEFAULT"]
+        if session_val:
+            return next(iter(session_val.values()))
+    return None
 
 
 
@@ -184,6 +203,7 @@ def match_usn_against_roster(ocr_usn: str, roster_list: List[str]) -> str:
 async def evaluate_sheet(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form("default"),
+    version: Optional[str] = Form("DEFAULT"),
     roster: Optional[str] = Form(None),
     assigned_usn: Optional[str] = Form(None)
 ):
@@ -262,6 +282,40 @@ async def evaluate_sheet(
             for c in classifications
         ]
 
+        # ── 7. Automatic Scoring against session Answer Key ─────────────────
+        score_report_dict = None
+        answer_key = get_answer_key_for_session(session_id, version) if session_id else None
+        if not answer_key and session_id:
+            answer_key = get_answer_key_for_session(session_id, "DEFAULT")
+        if answer_key:
+            layout = SheetLayout(
+                questions_per_column=15,
+                num_columns=2,
+                options="ABCD",
+            )
+            usn_y2 = usn_detections[0].y2 if usn_detections else None
+            report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
+            score_report_dict = {
+                "total_questions": report.total_questions,
+                "answered": report.answered,
+                "correct": report.correct,
+                "incorrect": report.incorrect,
+                "unanswered": report.unanswered,
+                "multiple_marked": report.multiple_marked,
+                "ambiguous": report.ambiguous,
+                "score_percent": report.score_percent,
+                "per_question": [
+                    {
+                        "question_number": q.question_number,
+                        "marked_options": q.marked_options,
+                        "correct_option": q.correct_option,
+                        "status": q.status.value,
+                        "has_ambiguous": q.has_ambiguous,
+                    }
+                    for q in report.per_question
+                ]
+            }
+
         t_end = time.perf_counter()
         processing_time_ms = int((t_end - t_start) * 1000)
 
@@ -273,6 +327,7 @@ async def evaluate_sheet(
             needs_manual_review=needs_manual_review,
             bubbles=bubbles,
             processing_time_ms=processing_time_ms,
+            score_report=score_report_dict,
         )
 
     except ValueError as ve:
@@ -663,31 +718,39 @@ class AnswerKeyResponse(BaseModel):
     saved: bool
 
 
+_fallback_answer_keys: Dict[str, Dict[str, Dict[int, str]]] = {}
+
 @app.post("/answer-key", response_model=AnswerKeyResponse)
 async def upload_answer_key(req: AnswerKeyRequest):
     """
-    Register the correct answer key for a given exam session and version in PostgreSQL.
+    Register the correct answer key for a given exam session and version.
+    Persists to PostgreSQL if available, otherwise falls back to memory.
     """
     sess_id = req.session_id
     ver = (req.version or "DEFAULT").upper()
     clean_answers = {int(k): str(v).upper() for k, v in req.answers.items()}
 
-    try:
-        conn = get_db_connection()
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO exam_versions (session_id, version, answers, created_at)
-                VALUES (%s, %s, %s, NOW())
-                ON CONFLICT (session_id, version)
-                DO UPDATE SET answers = EXCLUDED.answers, created_at = NOW()
-                """,
-                (sess_id, ver, json.dumps(clean_answers))
-            )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to persist answer key to DB: {e}")
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO exam_versions (session_id, version, answers, created_at)
+                    VALUES (%s, %s, %s, NOW())
+                    ON CONFLICT (session_id, version)
+                    DO UPDATE SET answers = EXCLUDED.answers, created_at = NOW()
+                    """,
+                    (sess_id, ver, json.dumps(clean_answers))
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to persist answer key to DB: {e}")
+    else:
+        if sess_id not in _fallback_answer_keys:
+            _fallback_answer_keys[sess_id] = {}
+        _fallback_answer_keys[sess_id][ver] = clean_answers
 
     return AnswerKeyResponse(
         session_id=sess_id,
@@ -699,46 +762,67 @@ async def upload_answer_key(req: AnswerKeyRequest):
 
 @app.get("/answer-key/{session_id}")
 async def get_answer_key(session_id: str, version: Optional[str] = None):
-    """Retrieve the stored answer key for a session and version from PostgreSQL."""
-    try:
-        conn = get_db_connection()
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                "SELECT version, answers FROM exam_versions WHERE session_id = %s",
-                (session_id,)
-            )
-            rows = cur.fetchall()
-        conn.close()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    """Retrieve the stored answer key for a session and version."""
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT version, answers FROM exam_versions WHERE session_id = %s",
+                    (session_id,)
+                )
+                rows = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-    if not rows:
-        raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}'.")
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}'.")
 
-    if version:
-        ver = version.upper()
-        key = get_answer_key_for_session(session_id, ver)
-        if key is None:
-            raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}' version '{ver}'.")
-        return {"session_id": session_id, "version": ver, "answers": key, "total_questions": len(key)}
+        if version:
+            ver = version.upper()
+            key = get_answer_key_for_session(session_id, ver)
+            if key is None:
+                raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}' version '{ver}'.")
+            return {"session_id": session_id, "version": ver, "answers": key, "total_questions": len(key)}
 
-    default_key = get_answer_key_for_session(session_id, "DEFAULT") or {}
-    versions_dict = {}
-    for r in rows:
-        v_name = r['version'].upper()
-        ans = r['answers']
-        if isinstance(ans, str):
-            ans = json.loads(ans)
-        parsed_ans = {int(k): str(v).upper() for k, v in ans.items()}
-        versions_dict[v_name] = {"answers": parsed_ans, "total_questions": len(parsed_ans)}
+        default_key = get_answer_key_for_session(session_id, "DEFAULT") or {}
+        versions_dict = {}
+        for r in rows:
+            v_name = r['version'].upper()
+            ans = r['answers']
+            if isinstance(ans, str):
+                ans = json.loads(ans)
+            parsed_ans = {int(k): str(v).upper() for k, v in ans.items()}
+            versions_dict[v_name] = {"answers": parsed_ans, "total_questions": len(parsed_ans)}
 
-    return {
-        "session_id": session_id,
-        "version": "DEFAULT",
-        "answers": default_key,
-        "total_questions": len(default_key),
-        "versions": versions_dict
-    }
+        return {
+            "session_id": session_id,
+            "version": "DEFAULT",
+            "answers": default_key,
+            "total_questions": len(default_key),
+            "versions": versions_dict
+        }
+    else:
+        if session_id not in _fallback_answer_keys:
+            raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}'.")
+        session_val = _fallback_answer_keys[session_id]
+        if version:
+            ver = version.upper()
+            key = session_val.get(ver)
+            if key is None:
+                raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}' version '{ver}'.")
+            return {"session_id": session_id, "version": ver, "answers": key, "total_questions": len(key)}
+
+        default_key = session_val.get("DEFAULT", {})
+        versions_dict = {v: {"answers": keys, "total_questions": len(keys)} for v, keys in session_val.items()}
+        return {
+            "session_id": session_id,
+            "version": "DEFAULT",
+            "answers": default_key,
+            "total_questions": len(default_key),
+            "versions": versions_dict
+        }
 
 
 

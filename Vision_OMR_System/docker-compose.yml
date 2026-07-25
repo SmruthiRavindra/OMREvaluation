@@ -75,8 +75,6 @@ services:
       backend:
         condition: service_healthy
     volumes:
-      - ./data_gateway:/app
-      - /app/node_modules
       - ./backend_ai:/backend_ai:ro
 
   # ── CloudBeaver (DBeaver Web UI) ───────────────────────────────────────────
