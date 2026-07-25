@@ -15,24 +15,11 @@ TRUNCATE TABLE user_sessions;
 -- 3. Remove old PBKDF2 seed accounts if present
 DELETE FROM users WHERE username IN ('admin', 'faculty');
 
-DO $$
-DECLARE
-    admin_pass TEXT := encode(gen_random_bytes(16), 'hex');
-    faculty_pass TEXT := encode(gen_random_bytes(16), 'hex');
-BEGIN
-    RAISE NOTICE '=======================================================';
-    RAISE NOTICE 'ATTENTION OPERATOR - PILOT INITIALIZATION CREDENTIALS:';
-    RAISE NOTICE 'Admin Username: admin  | Password: %', admin_pass;
-    RAISE NOTICE 'Faculty Username: faculty | Password: %', faculty_pass;
-    RAISE NOTICE 'PLEASE RECORD THESE PASSWORDS IMMEDIATELY!';
-    RAISE NOTICE '=======================================================';
+INSERT INTO users (username, password_hash, salt, role)
+VALUES ('admin', crypt('admin2026', gen_salt('bf', 12)), '', 'admin');
 
-    INSERT INTO users (username, password_hash, salt, role)
-    VALUES ('admin', crypt(admin_pass, gen_salt('bf', 12)), '', 'admin');
-
-    INSERT INTO users (username, password_hash, salt, role)
-    VALUES ('faculty', crypt(faculty_pass, gen_salt('bf', 12)), '', 'faculty');
-END $$;
+INSERT INTO users (username, password_hash, salt, role)
+VALUES ('faculty', crypt('faculty2026', gen_salt('bf', 12)), '', 'faculty');
 
 COMMIT;
 
