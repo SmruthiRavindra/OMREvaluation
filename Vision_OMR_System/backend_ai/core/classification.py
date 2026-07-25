@@ -120,9 +120,9 @@ def classify_bubble(
     otsu_masked = cv2.bitwise_and(otsu_bin, mask)
     fill_ratio = np.count_nonzero(otsu_masked) / mask_pixels if mask_pixels > 0 else 0.0
 
-    if contrast_diff >= 100.0 and ratio >= 0.60 and std_inner < 15.0:
+    if (contrast_diff >= 100.0 or mean_inner < 50.0) and ratio >= 0.60 and std_inner < 25.0:
         state = BubbleState.FILLED
-    elif contrast_diff <= 90.0 or ratio <= 0.50:
+    elif (contrast_diff <= 90.0 and mean_inner >= 50.0) or ratio <= 0.50:
         state = BubbleState.EMPTY
     else:
         if detection.class_name == "unfilled" and detection.confidence > 0.75:

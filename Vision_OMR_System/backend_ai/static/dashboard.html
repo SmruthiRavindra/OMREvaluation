@@ -689,15 +689,26 @@
         <div id="workflowStepsContainer" style="opacity: 0.5; pointer-events: none; transition: opacity 0.3s ease;">
           <!-- Step 2: Answer Key Card -->
           <div class="card" style="margin-bottom: 20px;">
-            <div class="card-header">🔑 Step 2: Answer Key</div>
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span>🔑 Step 2: Answer Key</span>
+              <span id="versionBadgesContainer" style="font-size: 11px; font-weight: 600; color: var(--text-muted);"></span>
+            </div>
             <div class="card-body">
               <div style="margin-bottom: 12px;">
-                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers (Question:Answer)</label>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Select Key Version</label>
+                <div class="image-tabs" style="margin-bottom: 10px;" id="answerKeyVersionTabs">
+                  <button type="button" class="image-tab active" data-ver="DEFAULT">Default / Single</button>
+                  <button type="button" class="image-tab" data-ver="A">Version A</button>
+                  <button type="button" class="image-tab" data-ver="B">Version B</button>
+                  <button type="button" class="image-tab" data-ver="C">Version C</button>
+                  <button type="button" class="image-tab" data-ver="D">Version D</button>
+                </div>
+                <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Correct Answers for <span id="activeVersionLabel" style="color: var(--accent);">Default</span> (Question:Answer)</label>
                 <textarea id="answerKeyInput" placeholder="1:B&#10;2:C&#10;3:A" style="width: 100%; height: 100px; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-input); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
               </div>
               <div>
                 <button class="btn btn-secondary" id="saveAnswerKeyBtn">
-                  💾 Save Answer Key
+                  💾 Save Answer Key (<span id="btnVersionLabel">Default</span>)
                 </button>
               </div>
               <div id="answerKeyStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;"></div>
@@ -722,6 +733,16 @@
         <div class="card" style="margin-bottom: 20px;">
           <div class="card-header">📷 Step 3: OMR Capture Mode</div>
           <div class="card-body">
+            <div style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; background: var(--bg-input); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border);">
+              <label for="scanVersionSelect" style="font-size: 11px; color: var(--text-muted); margin: 0; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;">Active Exam Version for Scan Batch:</label>
+              <select id="scanVersionSelect" style="padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid var(--accent); background: var(--bg-card); color: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;">
+                <option value="DEFAULT">Default / Single Version</option>
+                <option value="A">Version A</option>
+                <option value="B">Version B</option>
+                <option value="C">Version C</option>
+                <option value="D">Version D</option>
+              </select>
+            </div>
             <div class="image-tabs" style="margin-bottom: 16px;">
               <button class="image-tab active" id="tabUploadMode" style="flex: 1; border: none; font-family: inherit;">Upload File</button>
               <button class="image-tab" id="tabWebcamMode" style="flex: 1; border: none; font-family: inherit;">Live Webcam</button>
@@ -1100,10 +1121,22 @@
           <button id="closeModalBtn" style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer;">&times;</button>
         </div>
         <div style="padding:20px;">
-          <!-- USN Confirmation -->
-          <div style="margin-bottom:16px;">
-            <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">Student USN (Edit if OCR is wrong)</label>
-            <input type="text" id="modalUsnInput" style="width:100%; padding:10px 14px; border-radius:8px; border:2px solid var(--accent); background:var(--bg-input); color:var(--accent); font-family:monospace; font-size:18px; font-weight:bold; text-align:center; letter-spacing:2px;" placeholder="e.g. 4VV22IS009">
+          <!-- USN & Version Confirmation -->
+          <div style="margin-bottom:16px; display:grid; grid-template-columns: 2fr 1fr; gap:12px;">
+            <div>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">Student USN (Edit if OCR is wrong)</label>
+              <input type="text" id="modalUsnInput" style="width:100%; padding:10px 14px; border-radius:8px; border:2px solid var(--accent); background:var(--bg-input); color:var(--accent); font-family:monospace; font-size:18px; font-weight:bold; text-align:center; letter-spacing:2px;" placeholder="e.g. 4VV22IS009">
+            </div>
+            <div>
+              <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px; font-weight:700;">Exam Version</label>
+              <select id="modalVersionSelect" style="width:100%; padding:10px 8px; border-radius:8px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:13px; font-weight:bold; text-align:center; height: 46px;">
+                <option value="DEFAULT">Default</option>
+                <option value="A">Version A</option>
+                <option value="B">Version B</option>
+                <option value="C">Version C</option>
+                <option value="D">Version D</option>
+              </select>
+            </div>
           </div>
           <!-- Score Summary -->
           <div id="modalScoreSummary" style="display:flex; gap:8px; margin-bottom:16px;"></div>
@@ -1460,6 +1493,57 @@
       hideError();
     }
 
+    // ── Multi-version Answer Key State ─────────────────────
+    window._answerKeysByVersion = { 'DEFAULT': '', 'A': '', 'B': '', 'C': '', 'D': '' };
+    let currentAnswerKeyVersion = 'DEFAULT';
+
+    const answerKeyVersionTabs = document.getElementById('answerKeyVersionTabs');
+    if (answerKeyVersionTabs) {
+      answerKeyVersionTabs.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const newVer = e.target.dataset.ver || 'DEFAULT';
+          if (newVer === currentAnswerKeyVersion) return;
+
+          // Save current textarea draft
+          window._answerKeysByVersion[currentAnswerKeyVersion] = answerKeyInput.value;
+
+          currentAnswerKeyVersion = newVer;
+
+          // Update tab active state
+          answerKeyVersionTabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+
+          // Update labels
+          const verLabelText = currentAnswerKeyVersion === 'DEFAULT' ? 'Default / Single' : `Version ${currentAnswerKeyVersion}`;
+          document.getElementById('activeVersionLabel').textContent = verLabelText;
+          document.getElementById('btnVersionLabel').textContent = currentAnswerKeyVersion === 'DEFAULT' ? 'Default' : verLabelText;
+
+          // Load text draft for new version
+          answerKeyInput.value = window._answerKeysByVersion[currentAnswerKeyVersion] || '';
+          answerKeyStatus.textContent = '';
+        });
+      });
+    }
+
+    async function refreshConfiguredVersionBadges(sessionId) {
+      const badgesContainer = document.getElementById('versionBadgesContainer');
+      if (!badgesContainer || !sessionId) return;
+      try {
+        const resp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/versions`);
+        if (resp.ok) {
+          const data = await resp.json();
+          const savedVers = (data.rows || []).map(r => r.version);
+          if (savedVers.length > 0) {
+            badgesContainer.innerHTML = 'Saved: ' + savedVers.map(v => `<span style="background:var(--accent); color:white; padding:2px 6px; border-radius:10px; font-size:10px; margin-left:4px;">${v}</span>`).join('');
+          } else {
+            badgesContainer.innerHTML = '';
+          }
+        }
+      } catch(e) {
+        console.warn('Failed to fetch configured version badges:', e);
+      }
+    }
+
     // ── Save Answer Key ───────────────────────────────────
     saveAnswerKeyBtn.addEventListener('click', async () => {
       const sessionId = sessionIdInput.value.trim() || 'default';
@@ -1499,18 +1583,32 @@
       }
 
       saveAnswerKeyBtn.disabled = true;
-      answerKeyStatus.textContent = 'Saving answer key...';
+      answerKeyStatus.textContent = `Saving answer key for ${currentAnswerKeyVersion}...`;
       answerKeyStatus.style.color = 'var(--text-muted)';
 
       try {
+        // 1. Save to FastAPI memory store
         const resp = await fetch(`${GATEWAY_URL}/answer-key`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, answers })
+          body: JSON.stringify({ session_id: sessionId, version: currentAnswerKeyVersion, answers })
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(`FastAPI return HTTP ${resp.status}`);
         const data = await resp.json();
-        answerKeyStatus.textContent = `✅ Saved ${data.total_questions} questions for session "${sessionId}"`;
+
+        // 2. Persist to PostgreSQL database via gateway
+        try {
+          await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}/versions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ version: currentAnswerKeyVersion, answers })
+          });
+        } catch(e) { console.warn('Gateway DB version persist error:', e); }
+
+        window._answerKeysByVersion[currentAnswerKeyVersion] = rawKey;
+        await refreshConfiguredVersionBadges(sessionId);
+
+        answerKeyStatus.textContent = `✅ Saved ${data.total_questions} questions for session "${sessionId}" [${data.version || currentAnswerKeyVersion}]`;
         answerKeyStatus.style.color = 'var(--green)';
       } catch (err) {
         answerKeyStatus.textContent = `❌ Error: ${err.message}`;
@@ -1602,6 +1700,7 @@
           const formData = new FormData();
           formData.append('file', selectedFiles[0]);
           formData.append('session_id', sessionIdInput.value.trim() || 'default');
+          formData.append('version', document.getElementById('scanVersionSelect').value || 'DEFAULT');
           formData.append('questions_per_column', '15');
           formData.append('num_columns', '2');
           formData.append('options', 'ABCD');
@@ -1655,6 +1754,7 @@
             formData.append('files', f);
           }
           formData.append('session_id', sessionIdInput.value.trim() || 'default');
+          formData.append('version', document.getElementById('scanVersionSelect').value || 'DEFAULT');
           formData.append('questions_per_column', '15');
           formData.append('num_columns', '2');
           formData.append('options', 'ABCD');
@@ -2737,6 +2837,11 @@
         alert('No graded result to review. Please run the evaluation pipeline first.');
         return;
       }
+
+      const modalVerSel = document.getElementById('modalVersionSelect');
+      if (modalVerSel) {
+        modalVerSel.value = (resultData && resultData.version) ? resultData.version : (document.getElementById('scanVersionSelect').value || 'DEFAULT');
+      }
       
       const report = resultData.score_report;
       const currentUsn = document.getElementById('usnInput').value.trim() || resultData.usn || 'UNKNOWN';
@@ -2841,6 +2946,40 @@
     document.getElementById('closeModalBtn').addEventListener('click', closeConfirmModal);
     document.getElementById('modalCancelBtn').addEventListener('click', closeConfirmModal);
     
+    const modalVerSelect = document.getElementById('modalVersionSelect');
+    if (modalVerSelect) {
+      modalVerSelect.addEventListener('change', async (e) => {
+        const newVer = e.target.value;
+        if (!resultData || !resultData.bubbles) return;
+        const sessionId = sessionIdInput.value.trim() || 'default';
+        try {
+          const resp = await fetch(`${GATEWAY_URL}/re-score`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_id: sessionId,
+              version: newVer,
+              questions_per_column: 15,
+              num_columns: 2,
+              options: 'ABCD',
+              bubbles: resultData.bubbles
+            })
+          });
+          if (resp.ok) {
+            const scoreData = await resp.json();
+            resultData.score_report = scoreData;
+            resultData.version = newVer;
+            openConfirmModal(); // Re-render modal with updated version scores
+          } else {
+            alert(`No answer key registered for Version ${newVer} in session "${sessionId}".`);
+            e.target.value = resultData.version || 'DEFAULT';
+          }
+        } catch(err) {
+          console.error('Modal version change re-score error:', err);
+        }
+      });
+    }
+
     // Confirm button: apply USN override, mark as confirmed, unlock submit
     document.getElementById('modalConfirmBtn').addEventListener('click', () => {
       const confirmedUsn = modalUsnInput.value.trim().toUpperCase();
@@ -2849,9 +2988,14 @@
         return;
       }
       
-      // Apply the confirmed USN
+      const confirmedVersion = document.getElementById('modalVersionSelect')?.value || 'DEFAULT';
+
+      // Apply the confirmed USN and Version
       document.getElementById('usnInput').value = confirmedUsn;
-      if (resultData) resultData.usn = confirmedUsn;
+      if (resultData) {
+        resultData.usn = confirmedUsn;
+        resultData.version = confirmedVersion;
+      }
       
       // Recalculate scores after any overrides
       updateScoreSummary();
@@ -2862,7 +3006,7 @@
       document.getElementById('confirmationBadge').style.display = 'block';
       document.getElementById('submitDbBtn').style.display = '';
       document.getElementById('submitDbBtn').disabled = false;
-      document.getElementById('reviewConfirmBtn').innerHTML = '\u2705 Reviewed \u2014 Click to Re-review';
+      document.getElementById('reviewConfirmBtn').innerHTML = '✅ Reviewed — Click to Re-review';
       
       closeConfirmModal();
     });
@@ -3008,10 +3152,11 @@
       const usn = document.getElementById('usnInput').value.trim().toUpperCase() || resultData.usn || 'UNKNOWN';
       const btn = document.getElementById('saveOverrideBtn');
       btn.textContent = 'Saving...'; btn.disabled = true;
+      const selectedVersion = (resultData && resultData.version) || document.getElementById('modalVersionSelect')?.value || document.getElementById('scanVersionSelect')?.value || 'DEFAULT';
       try {
         const resp = await fetch(`${GATEWAY_URL}/api/results`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, usn, score: correct, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question: perQ })
+          body: JSON.stringify({ session_id: sessionId, usn, version: selectedVersion, score: correct, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question: perQ })
         });
         if (resp.ok) {
           btn.textContent = '✅ Overrides Saved!';
@@ -3195,8 +3340,10 @@
         const uiUsn = document.getElementById('usnInput').value.trim().toUpperCase();
         if (uiUsn) currentUsn = uiUsn;
 
+        const selectedVersion = (resultData && resultData.version) || (item && item.version) || document.getElementById('modalVersionSelect')?.value || document.getElementById('scanVersionSelect')?.value || 'DEFAULT';
+
         const payload = {
-          session_id: sessionId, usn: currentUsn,
+          session_id: sessionId, usn: currentUsn, version: selectedVersion,
           score: correct, total, correct, incorrect, unanswered, multiple_marked,
           score_percent,
           per_question: perQ
@@ -3377,10 +3524,12 @@
           
           // Send payload
           const sessionId = sessionIdInput.value.trim() || 'default';
+          const scanVer = document.getElementById('scanVersionSelect').value || 'DEFAULT';
           readyForNextFrame = false; // Block until backend replies
           ws.send(JSON.stringify({
             image: dataUrl,
             session_id: sessionId,
+            version: scanVer,
             assigned_usn: window._currentAssignedUsn || null
           }));
         } catch (err) {

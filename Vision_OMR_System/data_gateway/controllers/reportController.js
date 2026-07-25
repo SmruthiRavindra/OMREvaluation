@@ -71,6 +71,7 @@ export async function submitStudentResult(req, res) {
   const {
     session_id,
     usn,
+    version = 'DEFAULT',
     score = 0,
     total = 0,
     correct = 0,
@@ -85,6 +86,8 @@ export async function submitStudentResult(req, res) {
   if (!session_id || !usn) {
     return res.status(400).json({ error: 'Missing required fields: session_id, usn' });
   }
+
+  const cleanVersion = (version || 'DEFAULT').toUpperCase();
 
   try {
     // Enforce expected students count limit check
@@ -108,10 +111,11 @@ export async function submitStudentResult(req, res) {
 
     const result = await query(
       `INSERT INTO student_results 
-        (session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, annotated_image, status, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'PRESENT', NOW())
+        (session_id, usn, version, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, per_question, annotated_image, status, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'PRESENT', NOW())
        ON CONFLICT (session_id, usn)
        DO UPDATE SET
+         version = EXCLUDED.version,
          score = EXCLUDED.score,
          total = EXCLUDED.total,
          correct = EXCLUDED.correct,
@@ -124,12 +128,53 @@ export async function submitStudentResult(req, res) {
          status = 'PRESENT',
          created_at = NOW()
        RETURNING id`,
-      [session_id, usn, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question), annotated_image]
+      [session_id, usn, cleanVersion, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question), annotated_image]
     );
-    return res.status(201).json({ id: result.rows[0].id, saved: true });
+    return res.status(201).json({ id: result.rows[0].id, saved: true, version: cleanVersion });
   } catch (err) {
     console.error('[submitStudentResult] error:', err.message);
     return res.status(500).json({ error: 'Failed to persist student result' });
+  }
+}
+
+export async function saveExamVersion(req, res) {
+  const { sessionId } = req.params;
+  const { version = 'DEFAULT', answers = {} } = req.body;
+
+  if (!sessionId) {
+    return res.status(400).json({ error: 'Missing session ID' });
+  }
+
+  const verName = (version || 'DEFAULT').toUpperCase();
+
+  try {
+    await query(
+      `INSERT INTO exam_versions (session_id, version, answers, created_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (session_id, version)
+       DO UPDATE SET
+         answers = EXCLUDED.answers,
+         created_at = NOW()`,
+      [sessionId, verName, JSON.stringify(answers)]
+    );
+    return res.status(201).json({ message: `Version ${verName} answer key saved`, version: verName });
+  } catch (err) {
+    console.error('[saveExamVersion] error:', err.message);
+    return res.status(500).json({ error: 'Failed to save exam version answer key' });
+  }
+}
+
+export async function listExamVersions(req, res) {
+  const { sessionId } = req.params;
+  try {
+    const result = await query(
+      `SELECT version, answers, created_at FROM exam_versions WHERE session_id = $1 ORDER BY version ASC`,
+      [sessionId]
+    );
+    return res.json({ rows: result.rows });
+  } catch (err) {
+    console.error('[listExamVersions] error:', err.message);
+    return res.status(500).json({ error: 'Failed to retrieve exam versions' });
   }
 }
 

@@ -742,6 +742,7 @@
             <td>${dateStr}</td>
             <td>
               <span style="font-family: monospace;">${rosterArr.length} students</span>
+              <div id="sess_vers_${sess.id}" style="font-size: 10px; margin-top: 4px;"></div>
             </td>
             <td>
               <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 11px;" onclick="downloadExcelReport('${sess.id}')">Excel Report</button>
@@ -749,6 +750,20 @@
             </td>
           `;
           tbody.appendChild(tr);
+
+          // Fetch configured version keys for session
+          fetch(`${GATEWAY_URL}/api/sessions/${sess.id}/versions`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          .then(r => r.json())
+          .then(vData => {
+            const vers = (vData.rows || []).map(r => r.version);
+            const container = document.getElementById(`sess_vers_${sess.id}`);
+            if (container && vers.length > 0) {
+              container.innerHTML = '<span style="color:var(--text-secondary);">Keys:</span> ' + vers.map(v => `<span style="background:#4f46e5; color:white; padding:1px 5px; border-radius:8px; font-size:9px; font-weight:700;">${v}</span>`).join(' ');
+            }
+          })
+          .catch(_ => {});
         });
       } catch(err) {
         tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color: var(--red);">${err.message}</td></tr>`;

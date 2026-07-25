@@ -49,9 +49,32 @@ app = FastAPI(
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
 
-# ── In-memory answer key store (keyed by session_id) ────────────────────────
+# ── In-memory answer key store (keyed by session_id -> version -> answers) ───
 # In production, persist this in PostgreSQL via the data gateway.
-_answer_keys: Dict[str, Dict[int, str]] = {}
+_answer_keys: Dict[str, Dict[str, Dict[int, str]]] = {}
+
+
+def get_answer_key_for_session(session_id: Optional[str], version: Optional[str] = None) -> Optional[Dict[int, str]]:
+    if not session_id or session_id not in _answer_keys:
+        return None
+    session_val = _answer_keys[session_id]
+    if not session_val:
+        return None
+
+    # Handle legacy flat dict structure {1: "A", 2: "B"} for backward compatibility
+    first_key = next(iter(session_val.keys()))
+    if isinstance(first_key, int) or (isinstance(first_key, str) and first_key.isdigit()):
+        return session_val  # type: ignore
+
+    ver = (version or "DEFAULT").upper()
+    if ver in session_val:
+        return session_val[ver]
+    if "DEFAULT" in session_val:
+        return session_val["DEFAULT"]
+    if "A" in session_val:
+        return session_val["A"]
+    return next(iter(session_val.values()))
+
 
 
 # ── Response schemas ────────────────────────────────────────────────────────
@@ -236,6 +259,7 @@ async def evaluate_sheet(
 async def evaluate_batch(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form("default"),
+    version: Optional[str] = Form("DEFAULT"),
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
     options: str = Form("ABCD")
@@ -267,7 +291,7 @@ async def evaluate_batch(
 
         # 2. Process Each Page
         batch_results = []
-        answer_key = _answer_keys.get(session_id or "default")
+        answer_key = get_answer_key_for_session(session_id or "default", version)
         layout = SheetLayout(
             questions_per_column=questions_per_column,
             num_columns=num_columns,
@@ -354,11 +378,12 @@ def run_batch_evaluation_sync(
     questions_per_column: int,
     num_columns: int,
     options: str,
+    version: str = "DEFAULT",
     roster_list: List[str] = None,
     assigned_usns: List[str] = None
 ):
     try:
-        answer_key = _answer_keys.get(session_id)
+        answer_key = get_answer_key_for_session(session_id, version)
         layout = SheetLayout(
             questions_per_column=questions_per_column,
             num_columns=num_columns,
@@ -474,6 +499,7 @@ def run_batch_evaluation_sync(
             result = {
                 "filename": filename,
                 "usn": usn_value,
+                "version": version,
                 "filled_count": filled_cnt,
                 "empty_count": empty_cnt,
                 "ambiguous_count": ambig_cnt,
@@ -508,6 +534,7 @@ async def run_batch_evaluation_async(
     questions_per_column: int,
     num_columns: int,
     options: str,
+    version: str = "DEFAULT",
     roster_list: List[str] = None,
     assigned_usns: List[str] = None
 ):
@@ -521,6 +548,7 @@ async def run_batch_evaluation_async(
         questions_per_column,
         num_columns,
         options,
+        version,
         roster_list,
         assigned_usns
     )
@@ -531,6 +559,7 @@ async def batch_evaluate_async(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     session_id: str = Form("default"),
+    version: str = Form("DEFAULT"),
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
     options: str = Form("ABCD"),
@@ -565,6 +594,7 @@ async def batch_evaluate_async(
         questions_per_column,
         num_columns,
         options,
+        version,
         roster_list,
         assigned_usns_list
     )
@@ -588,13 +618,15 @@ async def get_task_status(task_id: str):
 # ── Answer Key management ───────────────────────────────────────────────────
 
 class AnswerKeyRequest(BaseModel):
-    """Upload correct answers for a session."""
+    """Upload correct answers for a session and version (A/B/C/D)."""
     session_id: str
+    version: Optional[str] = "DEFAULT"
     answers: Dict[int, str]  # { 1: "A", 2: "C", 3: "B", ... }
 
 
 class AnswerKeyResponse(BaseModel):
     session_id: str
+    version: str = "DEFAULT"
     total_questions: int
     saved: bool
 
@@ -602,26 +634,61 @@ class AnswerKeyResponse(BaseModel):
 @app.post("/answer-key", response_model=AnswerKeyResponse)
 async def upload_answer_key(req: AnswerKeyRequest):
     """
-    Register the correct answer key for a given exam session.
+    Register the correct answer key for a given exam session and version.
 
-    The key is stored in memory and used by the /score endpoint
-    to grade evaluated sheets.
+    The key is stored in memory and used by scoring endpoints.
     """
-    _answer_keys[req.session_id] = req.answers
+    sess_id = req.session_id
+    ver = (req.version or "DEFAULT").upper()
+    if sess_id not in _answer_keys:
+        _answer_keys[sess_id] = {}
+
+    # Convert answer key integer keys to ints if needed
+    clean_answers = {int(k): str(v).upper() for k, v in req.answers.items()}
+    _answer_keys[sess_id][ver] = clean_answers
+
     return AnswerKeyResponse(
-        session_id=req.session_id,
-        total_questions=len(req.answers),
+        session_id=sess_id,
+        version=ver,
+        total_questions=len(clean_answers),
         saved=True,
     )
 
 
 @app.get("/answer-key/{session_id}")
-async def get_answer_key(session_id: str):
-    """Retrieve the stored answer key for a session."""
-    key = _answer_keys.get(session_id)
-    if key is None:
+async def get_answer_key(session_id: str, version: Optional[str] = None):
+    """Retrieve the stored answer key for a session and version."""
+    if session_id not in _answer_keys:
         raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}'.")
-    return {"session_id": session_id, "answers": key, "total_questions": len(key)}
+    
+    session_val = _answer_keys[session_id]
+    if version:
+        ver = version.upper()
+        key = get_answer_key_for_session(session_id, ver)
+        if key is None:
+            raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}' version '{ver}'.")
+        return {"session_id": session_id, "version": ver, "answers": key, "total_questions": len(key)}
+    
+    # Return default/active key at top-level alongside versions for backward compatibility
+    default_key = get_answer_key_for_session(session_id, "DEFAULT") or {}
+    first_key = next(iter(session_val.keys())) if session_val else None
+    if isinstance(first_key, int) or (isinstance(first_key, str) and first_key.isdigit()):
+        return {
+            "session_id": session_id,
+            "version": "DEFAULT",
+            "answers": session_val,
+            "total_questions": len(session_val),
+            "versions": {"DEFAULT": {"answers": session_val, "total_questions": len(session_val)}}
+        }
+
+    return {
+        "session_id": session_id,
+        "version": "DEFAULT",
+        "answers": default_key,
+        "total_questions": len(default_key),
+        "versions": {v: {"answers": keys, "total_questions": len(keys)} for v, keys in session_val.items()}
+    }
+
 
 
 # ── Scoring endpoint ────────────────────────────────────────────────────────
@@ -629,6 +696,7 @@ async def get_answer_key(session_id: str):
 class ScoreRequest(BaseModel):
     """Score a sheet against its session's answer key."""
     session_id: str
+    version: Optional[str] = "DEFAULT"
     questions_per_column: int = 30
     num_columns: int = 1
     options: str = "ABCD"
@@ -658,6 +726,7 @@ class ScoreResponse(BaseModel):
 async def score_evaluated_sheet(
     file: UploadFile = File(...),
     session_id: str = "default",
+    version: Optional[str] = "DEFAULT",
     questions_per_column: int = 15,
     num_columns: int = 2,
     options: str = "ABCD",
@@ -666,12 +735,12 @@ async def score_evaluated_sheet(
     Full pipeline + scoring in one call.
 
     Runs the evaluation pipeline and then scores the results against
-    the answer key stored for the given session_id.
+    the answer key stored for the given session_id and version.
     """
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image.")
 
-    answer_key = _answer_keys.get(session_id)
+    answer_key = get_answer_key_for_session(session_id, version)
 
     try:
         contents = await file.read()
@@ -720,6 +789,7 @@ async def score_evaluated_sheet(
 class RescoreRequest(BaseModel):
     """Request payload for manual re-scoring (overrides)."""
     session_id: str = "default"
+    version: Optional[str] = "DEFAULT"
     questions_per_column: int = 15
     num_columns: int = 2
     options: str = "ABCD"
@@ -733,7 +803,7 @@ async def rescore_sheet(req: RescoreRequest):
     Accepts the global bubble array from the frontend (with manual overrides applied)
     and instantly recalculates the score.
     """
-    answer_key = _answer_keys.get(req.session_id)
+    answer_key = get_answer_key_for_session(req.session_id, req.version)
     if not answer_key:
         raise HTTPException(status_code=400, detail="Answer key not found for session.")
 
@@ -869,6 +939,7 @@ class DebugResponse(BaseModel):
 async def debug_evaluate(
     file: UploadFile = File(...),
     session_id: Optional[str] = Form("default"),
+    version: Optional[str] = Form("DEFAULT"),
     questions_per_column: int = Form(15),
     num_columns: int = Form(2),
     options: str = Form("ABCD"),
@@ -994,7 +1065,7 @@ async def debug_evaluate(
 
         # Scoring report if answer key is set
         score_report_dict = None
-        answer_key = _answer_keys.get(session_id) if session_id else None
+        answer_key = get_answer_key_for_session(session_id, version) if session_id else None
         if answer_key:
             usn_y2 = usn_dets[0].y2 if usn_dets else None
             report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
@@ -1169,7 +1240,9 @@ async def websocket_evaluate(websocket: WebSocket):
             classifications = classify_all(clean_img, bubble_dets)
             
             # Grade
-            answer_key = _answer_keys.get(session_id) if session_id else None
+            session_id = payload.get("session_id", "default")
+            version = payload.get("version", "DEFAULT")
+            answer_key = get_answer_key_for_session(session_id, version) if session_id else None
             usn_y2 = usn_dets[0].y2 if usn_dets else None
             layout = SheetLayout(questions_per_column=15, num_columns=2, options="ABCD")
             score_report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)

@@ -73,6 +73,9 @@ export async function evaluateSheet(req, res) {
       contentType: req.file.mimetype,
     });
     form.append('session_id', session_id);
+    if (req.body?.version) {
+      form.append('version', req.body.version);
+    }
     if (roster) {
       form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
     }
@@ -236,6 +239,9 @@ export async function evaluateBatchV1(req, res) {
     }
 
     form.append('session_id', session_id);
+    if (req.body?.version) {
+      form.append('version', req.body.version);
+    }
     if (roster) {
       form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
     }
@@ -352,6 +358,9 @@ export async function proxyDebugEvaluate(req, res) {
       contentType: req.file.mimetype,
     });
     form.append('session_id', session_id);
+    if (req.body?.version) {
+      form.append('version', req.body.version);
+    }
     if (roster) {
       form.append('roster', typeof roster === 'string' ? roster : JSON.stringify(roster));
     }
