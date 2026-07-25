@@ -11,6 +11,8 @@
 #   gateway  → Express / Node.js data gateway (port 3000)
 # =============================================================================
 
+name: vision_omr_system
+
 services:
   # ── PostgreSQL ─────────────────────────────────────────────────────────────
   db:
@@ -32,9 +34,8 @@ services:
 
   # ── FastAPI Backend AI ─────────────────────────────────────────────────────
   backend:
-    build:
-      context: ./backend_ai
-      dockerfile: Dockerfile
+    image: vision_omr_system-backend:latest
+    build: ./backend_ai
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -52,9 +53,8 @@ services:
 
   # ── Node.js Data Gateway ───────────────────────────────────────────────────
   gateway:
-    build:
-      context: ./data_gateway
-      dockerfile: Dockerfile
+    image: vision_omr_system-gateway:latest
+    build: ./data_gateway
     restart: unless-stopped
     ports:
       - "3000:3000"

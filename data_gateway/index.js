@@ -68,13 +68,22 @@ import {
   getAdminStats
 } from './controllers/authController.js';
 
+import fs        from 'fs';
+
 // ── App setup ──────────────────────────────────────────────────────────────
 const app  = express();
 const PORT = Number(process.env.PORT ?? 3000);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const staticPath = path.join(__dirname, '../backend_ai/static');
+
+const candidateStaticPaths = [
+  path.join(__dirname, '../backend_ai/static'),
+  '/backend_ai/static',
+  path.join(__dirname, 'static'),
+  path.join(__dirname, '../../backend_ai/static')
+];
+const staticPath = candidateStaticPaths.find(p => fs.existsSync(p)) || candidateStaticPaths[0];
 
 // ── Middleware ─────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
