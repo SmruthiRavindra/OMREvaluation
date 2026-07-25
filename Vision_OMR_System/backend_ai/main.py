@@ -34,6 +34,9 @@ from core.classification import classify_all, BubbleState
 from core import extract_usn_from_roi
 from core.pdf_parser import extract_pages_from_pdf
 
+# Read once at startup. Set OMR_DEBUG_DUMP=true to enable disk writes.
+OMR_DEBUG_DUMP: bool = os.getenv("OMR_DEBUG_DUMP", "false").lower() in ("1", "true", "yes")
+
 from core.scoring import (
     score_sheet,
     SheetLayout,
@@ -49,31 +52,60 @@ app = FastAPI(
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
 
-# ── In-memory answer key store (keyed by session_id -> version -> answers) ───
-# In production, persist this in PostgreSQL via the data gateway.
-_answer_keys: Dict[str, Dict[str, Dict[int, str]]] = {}
+import os
+import json
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.getenv("PGHOST", "localhost"),
+        port=int(os.getenv("PGPORT", 5432)),
+        dbname=os.getenv("PGDATABASE", "omr_db"),
+        user=os.getenv("PGUSER", "postgres"),
+        password=os.getenv("PGPASSWORD", "postgres")
+    )
 
 def get_answer_key_for_session(session_id: Optional[str], version: Optional[str] = None) -> Optional[Dict[int, str]]:
-    if not session_id or session_id not in _answer_keys:
+    if not session_id:
         return None
-    session_val = _answer_keys[session_id]
-    if not session_val:
-        return None
-
-    # Handle legacy flat dict structure {1: "A", 2: "B"} for backward compatibility
-    first_key = next(iter(session_val.keys()))
-    if isinstance(first_key, int) or (isinstance(first_key, str) and first_key.isdigit()):
-        return session_val  # type: ignore
-
     ver = (version or "DEFAULT").upper()
-    if ver in session_val:
-        return session_val[ver]
-    if "DEFAULT" in session_val:
-        return session_val["DEFAULT"]
-    if "A" in session_val:
-        return session_val["A"]
-    return next(iter(session_val.values()))
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT version, answers FROM exam_versions WHERE session_id = %s",
+                (session_id,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+
+        if not rows:
+            return None
+
+        # Look for explicit version match
+        for r in rows:
+            if r['version'].upper() == ver:
+                raw_ans = r['answers']
+                if isinstance(raw_ans, str):
+                    raw_ans = json.loads(raw_ans)
+                return {int(k): str(v).upper() for k, v in raw_ans.items()}
+
+        # Fallback to DEFAULT or first available version
+        for r in rows:
+            if r['version'].upper() in ("DEFAULT", "A"):
+                raw_ans = r['answers']
+                if isinstance(raw_ans, str):
+                    raw_ans = json.loads(raw_ans)
+                return {int(k): str(v).upper() for k, v in raw_ans.items()}
+
+        first_ans = rows[0]['answers']
+        if isinstance(first_ans, str):
+            first_ans = json.loads(first_ans)
+        return {int(k): str(v).upper() for k, v in first_ans.items()}
+    except Exception as e:
+        print(f"[DB Error get_answer_key_for_session]: {e}")
+        return None
 
 
 
@@ -634,18 +666,28 @@ class AnswerKeyResponse(BaseModel):
 @app.post("/answer-key", response_model=AnswerKeyResponse)
 async def upload_answer_key(req: AnswerKeyRequest):
     """
-    Register the correct answer key for a given exam session and version.
-
-    The key is stored in memory and used by scoring endpoints.
+    Register the correct answer key for a given exam session and version in PostgreSQL.
     """
     sess_id = req.session_id
     ver = (req.version or "DEFAULT").upper()
-    if sess_id not in _answer_keys:
-        _answer_keys[sess_id] = {}
-
-    # Convert answer key integer keys to ints if needed
     clean_answers = {int(k): str(v).upper() for k, v in req.answers.items()}
-    _answer_keys[sess_id][ver] = clean_answers
+
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO exam_versions (session_id, version, answers, created_at)
+                VALUES (%s, %s, %s, NOW())
+                ON CONFLICT (session_id, version)
+                DO UPDATE SET answers = EXCLUDED.answers, created_at = NOW()
+                """,
+                (sess_id, ver, json.dumps(clean_answers))
+            )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to persist answer key to DB: {e}")
 
     return AnswerKeyResponse(
         session_id=sess_id,
@@ -657,36 +699,45 @@ async def upload_answer_key(req: AnswerKeyRequest):
 
 @app.get("/answer-key/{session_id}")
 async def get_answer_key(session_id: str, version: Optional[str] = None):
-    """Retrieve the stored answer key for a session and version."""
-    if session_id not in _answer_keys:
+    """Retrieve the stored answer key for a session and version from PostgreSQL."""
+    try:
+        conn = get_db_connection()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT version, answers FROM exam_versions WHERE session_id = %s",
+                (session_id,)
+            )
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    if not rows:
         raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}'.")
-    
-    session_val = _answer_keys[session_id]
+
     if version:
         ver = version.upper()
         key = get_answer_key_for_session(session_id, ver)
         if key is None:
             raise HTTPException(status_code=404, detail=f"No answer key for session '{session_id}' version '{ver}'.")
         return {"session_id": session_id, "version": ver, "answers": key, "total_questions": len(key)}
-    
-    # Return default/active key at top-level alongside versions for backward compatibility
+
     default_key = get_answer_key_for_session(session_id, "DEFAULT") or {}
-    first_key = next(iter(session_val.keys())) if session_val else None
-    if isinstance(first_key, int) or (isinstance(first_key, str) and first_key.isdigit()):
-        return {
-            "session_id": session_id,
-            "version": "DEFAULT",
-            "answers": session_val,
-            "total_questions": len(session_val),
-            "versions": {"DEFAULT": {"answers": session_val, "total_questions": len(session_val)}}
-        }
+    versions_dict = {}
+    for r in rows:
+        v_name = r['version'].upper()
+        ans = r['answers']
+        if isinstance(ans, str):
+            ans = json.loads(ans)
+        parsed_ans = {int(k): str(v).upper() for k, v in ans.items()}
+        versions_dict[v_name] = {"answers": parsed_ans, "total_questions": len(parsed_ans)}
 
     return {
         "session_id": session_id,
         "version": "DEFAULT",
         "answers": default_key,
         "total_questions": len(default_key),
-        "versions": {v: {"answers": keys, "total_questions": len(keys)} for v, keys in session_val.items()}
+        "versions": versions_dict
     }
 
 
@@ -986,10 +1037,14 @@ async def debug_evaluate(
         bubble_dets = [d for d in detections if d.class_name != "usn"]
 
         # Extract USN
+        req_prefix = str(uuid.uuid4())[:8]
         usn_value = assigned_usn
         if not usn_value and usn_dets:
             det = usn_dets[0]
-            usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
+            usn_value = extract_usn_from_roi(
+                clean_img, det.x1, det.y1, det.x2, det.y2,
+                debug_prefix=req_prefix if OMR_DEBUG_DUMP else ""
+            )
             if usn_value and roster_list:
                 usn_value = match_usn_against_roster(usn_value, roster_list)
 
@@ -1003,34 +1058,35 @@ async def debug_evaluate(
         )
 
         # ── Debug Save ──────────────────────────────────────────────────────
-        debug_dir = Path(__file__).parent / "debug_output"
-        debug_dir.mkdir(exist_ok=True)
-        
-        # Save preprocessed sheet
-        cv2.imwrite(str(debug_dir / "preprocessed_sheet.png"), clean_img)
-        
-        # Save a few sample bubble details to debug folder
-        from core.classification import _extract_inner_region
-        for idx, cr in enumerate(classifications[:15]):
-            det = cr.detection
-            x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
-            roi = clean_img[y1:y2, x1:x2]
-            if roi.size > 0:
-                roi_resized = cv2.resize(roi, (64, 64))
-                gray, mask = _extract_inner_region(roi_resized)
-                _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                masked_binary = cv2.bitwise_and(binary, mask)
-                
-                cv2.imwrite(str(debug_dir / f"bubble_{idx}_roi.png"), roi_resized)
-                cv2.imwrite(str(debug_dir / f"bubble_{idx}_binary.png"), binary)
-                cv2.imwrite(str(debug_dir / f"bubble_{idx}_mask.png"), mask)
-                cv2.imwrite(str(debug_dir / f"bubble_{idx}_masked.png"), masked_binary)
-                
-                # Write text metadata
-                with open(debug_dir / f"bubble_{idx}_meta.txt", "w") as f:
-                    f.write(f"state: {cr.state.value}\n")
-                    f.write(f"fill_ratio: {cr.fill_ratio:.4f}\n")
-                    f.write(f"bbox: {x1}, {y1}, {x2}, {y2}\n")
+        if OMR_DEBUG_DUMP:
+            debug_dir = Path(__file__).parent / "debug_output"
+            debug_dir.mkdir(exist_ok=True)
+            
+            # Save preprocessed sheet
+            cv2.imwrite(str(debug_dir / f"{req_prefix}_preprocessed_sheet.png"), clean_img)
+            
+            # Save a few sample bubble details to debug folder
+            from core.classification import _extract_inner_region
+            for idx, cr in enumerate(classifications[:15]):
+                det = cr.detection
+                x1, y1, x2, y2 = int(det.x1), int(det.y1), int(det.x2), int(det.y2)
+                roi = clean_img[y1:y2, x1:x2]
+                if roi.size > 0:
+                    roi_resized = cv2.resize(roi, (64, 64))
+                    gray, mask = _extract_inner_region(roi_resized)
+                    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                    masked_binary = cv2.bitwise_and(binary, mask)
+                    
+                    cv2.imwrite(str(debug_dir / f"{req_prefix}_bubble_{idx}_roi.png"), roi_resized)
+                    cv2.imwrite(str(debug_dir / f"{req_prefix}_bubble_{idx}_binary.png"), binary)
+                    cv2.imwrite(str(debug_dir / f"{req_prefix}_bubble_{idx}_mask.png"), mask)
+                    cv2.imwrite(str(debug_dir / f"{req_prefix}_bubble_{idx}_masked.png"), masked_binary)
+                    
+                    # Write text metadata
+                    with open(debug_dir / f"{req_prefix}_bubble_{idx}_meta.txt", "w") as f:
+                        f.write(f"state: {cr.state.value}\n")
+                        f.write(f"fill_ratio: {cr.fill_ratio:.4f}\n")
+                        f.write(f"bbox: {x1}, {y1}, {x2}, {y2}\n")
 
         # Annotate ONLY valid detections
         usn_y2 = usn_dets[0].y2 if usn_dets else None

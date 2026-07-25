@@ -305,6 +305,7 @@ def extract_usn_from_roi(
     image: np.ndarray,
     x1: float, y1: float,
     x2: float, y2: float,
+    debug_prefix: str = "",
 ) -> str:
     """
     Crop the USN bounding box detected by YOLO, run multi-scale EasyOCR
@@ -316,6 +317,8 @@ def extract_usn_from_roi(
         The full preprocessed OMR sheet image (BGR).
     x1, y1, x2, y2 : float
         YOLO-detected bounding box coordinates for the USN region.
+    debug_prefix : str, optional
+        Request ID prefix for saving debug output files (if non-empty).
 
     Returns
     -------
@@ -342,9 +345,10 @@ def extract_usn_from_roi(
         return "UNKNOWN"
 
     # ── Debug: save crop for inspection ───────────────────────────────────
-    debug_dir = Path(__file__).parent.parent / "debug_output"
-    debug_dir.mkdir(exist_ok=True)
-    cv2.imwrite(str(debug_dir / "usn_crop_test.png"), roi)
+    if debug_prefix:
+        debug_dir = Path(__file__).parent.parent / "debug_output"
+        debug_dir.mkdir(exist_ok=True)
+        cv2.imwrite(str(debug_dir / f"{debug_prefix}_usn_crop_test.png"), roi)
 
     # ── 2. Convert to grayscale ───────────────────────────────────────────
     if len(roi.shape) == 3 and roi.shape[2] == 3:

@@ -4,3 +4,33 @@ __pycache__/
 debug_output/
 *.pyc
 *.pyo
+
+# ── Dev / debug scripts (excluded from production image) ──────────────
+analyze_q1.py
+analyze_q1_real.py
+analyze_usn.py
+benchmark_pipeline.py
+check_annotated_output.py
+check_current_test.py
+find_q5_dets.py
+get_bubble_coords.py
+inspect_crop_region.py
+inspect_latest_usn.py
+test_adaptive_c.py
+test_annotated_crop.py
+test_bubbles.py
+test_dynamic.py
+test_low_conf.py
+test_ocr_prep.py
+test_ocr_raw.py
+test_real_extract.py
+test_regex.py
+test_usn.py
+test_usn_ci_li.py
+test_usn_crop35.py
+test_usn_robust.py
+test_input_new.png
+temp_crop.png
+
+# ── CI / test suite (not needed at runtime) ──────────────────────────
+tests/

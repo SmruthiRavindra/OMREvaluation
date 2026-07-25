@@ -6,18 +6,23 @@
  */
 
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import pool from '../config/database.js';
 
+const BCRYPT_ROUNDS = 12;
+
 // ── Passwords Utility Functions ──────────────────────────────────────────────
-export function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return { salt, hash };
+export async function hashPassword(password) {
+  const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+  return { salt: '', hash };
 }
 
-export function verifyPassword(password, salt, hash) {
-  const verifyHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return hash === verifyHash;
+export async function verifyPassword(password, _salt, hash) {
+  return bcrypt.compare(password, hash);
+}
+
+function hashToken(rawToken) {
+  return crypto.createHash('sha256').update(rawToken).digest('hex');
 }
 
 // ── Auth Route Handlers ──────────────────────────────────────────────────────
@@ -46,24 +51,25 @@ export async function login(req, res) {
 
     const user = userRes.rows[0];
 
-    // 2. Verify password hash
-    const isCorrect = verifyPassword(password, user.salt, user.password_hash);
+    // 2. Verify password hash async
+    const isCorrect = await verifyPassword(password, user.salt, user.password_hash);
     if (!isCorrect) {
       return res.status(401).json({ error: 'Invalid username or password.' });
     }
 
-    // 3. Create session token (64-char secure hex)
-    const token = crypto.randomBytes(32).toString('hex');
+    // 3. Create session token (64-char secure hex) and store SHA-256 hash in DB
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashToken(rawToken);
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours expiry
 
     await pool.query(
-      'INSERT INTO user_sessions (user_id, token, expires_at) VALUES ($1, $2, $3)',
-      [user.id, token, expiresAt]
+      'INSERT INTO user_sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+      [user.id, tokenHash, expiresAt]
     );
 
-    // 4. Return token and user details
+    // 4. Return raw token and user details to client
     return res.json({
-      token,
+      token: rawToken,
       user: {
         username: user.username,
         role: user.role
@@ -84,9 +90,10 @@ export async function logout(req, res) {
     return res.json({ success: true, message: 'Already logged out.' });
   }
 
-  const token = authHeader.split(' ')[1];
+  const rawToken = authHeader.split(' ')[1];
+  const tokenHash = hashToken(rawToken);
   try {
-    await pool.query('DELETE FROM user_sessions WHERE token = $1', [token]);
+    await pool.query('DELETE FROM user_sessions WHERE token_hash = $1', [tokenHash]);
     return res.json({ success: true, message: 'Logged out successfully.' });
   } catch (err) {
     console.error('[Auth Logout Error]', err);
@@ -109,13 +116,14 @@ export async function verifyAuth(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized. Auth token missing.' });
   }
   try {
-    // Find active, unexpired session
+    const tokenHash = hashToken(token);
+    // Find active, unexpired session via token_hash
     const sessionRes = await pool.query(
-      `SELECT s.token, u.id as user_id, u.username, u.role, s.expires_at 
+      `SELECT s.token_hash, u.id as user_id, u.username, u.role, s.expires_at 
        FROM user_sessions s 
        JOIN users u ON s.user_id = u.id 
-       WHERE s.token = $1 AND s.expires_at > NOW()`,
-      [token]
+       WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+      [tokenHash]
     );
 
     if (sessionRes.rowCount === 0) {
@@ -186,7 +194,7 @@ export async function createUser(req, res) {
     }
 
     // Hash password and insert
-    const { salt, hash } = hashPassword(password);
+    const { salt, hash } = await hashPassword(password);
     const result = await pool.query(
       'INSERT INTO users (username, password_hash, salt, role) VALUES ($1, $2, $3, $4) RETURNING id, username, role, created_at',
       [normalizedUser, hash, salt, normalizedRole]

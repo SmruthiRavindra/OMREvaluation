@@ -25,7 +25,9 @@ import cors      from 'cors';
 import helmet    from 'helmet';
 import morgan    from 'morgan';
 import path      from 'path';
+import crypto    from 'crypto';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import 'dotenv/config';
 
 import {
@@ -75,8 +77,20 @@ const __dirname = path.dirname(__filename);
 const staticPath = path.join(__dirname, '../backend_ai/static');
 
 // ── Middleware ─────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false })); // security headers (allow CORS)
-app.use(cors());           // allow all origins (restrict in production)
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin '${origin}' not in allow-list`));
+  },
+  credentials: true,
+}));
 app.use(morgan('dev'));    // HTTP request logging
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -127,8 +141,18 @@ app.get('/', (req, res) => {
   res.redirect('/dashboard');
 });
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 login requests per windowMs
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Please try again in 15 minutes.' }
+  // NOTE: If a reverse proxy is ever placed in front of this service,
+  // add app.set('trust proxy', N) and adjust appropriately.
+});
+
 // Auth Portal Endpoints
-app.post('/api/auth/login', login);
+app.post('/api/auth/login', loginLimiter, login);
 app.post('/api/auth/logout', logout);
 
 // User Management (Admin Only)
@@ -236,11 +260,12 @@ server.on('upgrade', (request, socket, head) => {
       return;
     }
 
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     // Verify token against database
     pool.query(
       `SELECT 1 FROM user_sessions s 
-       WHERE s.token = $1 AND s.expires_at > NOW()`,
-      [token]
+       WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+      [tokenHash]
     ).then((dbRes) => {
       if (dbRes.rowCount === 0) {
         console.warn('[Gateway WS Proxy] Upgrade rejected: Session expired or invalid');

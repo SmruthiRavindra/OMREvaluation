@@ -9,7 +9,7 @@
  *                          (re-scan)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   SafeAreaView,
   View,
@@ -17,11 +17,20 @@ import {
   StyleSheet,
   StatusBar,
   Alert,
+  TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 
 import CameraScanner from './components/CameraScanner';
 import ResultsModal  from './components/ResultsModal';
-import { evaluateSheet, submitResults } from './services/api';
+import LoginScreen   from './components/LoginScreen';
+import {
+  evaluateSheet,
+  submitResults,
+  getStoredToken,
+  logoutUser,
+  setOnUnauthorized,
+} from './services/api';
 
 // ── Screens ────────────────────────────────────────────────────────────────
 
@@ -34,9 +43,31 @@ const SCREEN = {
 // ── Component ──────────────────────────────────────────────────────────────
 
 const App = () => {
-  const [screen,  setScreen]  = useState(SCREEN.SCANNING);
-  const [results, setResults] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking]   = useState(true);
+  const [screen,  setScreen]              = useState(SCREEN.SCANNING);
+  const [results, setResults]             = useState(null);
+  const [loading, setLoading]             = useState(false);
+
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      setAuthenticated(false);
+      setResults(null);
+      setScreen(SCREEN.SCANNING);
+    });
+
+    getStoredToken().then(token => {
+      setAuthenticated(!!token);
+      setAuthChecking(false);
+    });
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    await logoutUser();
+    setAuthenticated(false);
+    setResults(null);
+    setScreen(SCREEN.SCANNING);
+  }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -78,14 +109,36 @@ const App = () => {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
+  if (authChecking) {
+    return (
+      <SafeAreaView style={[styles.root, styles.center]}>
+        <ActivityIndicator size="large" color="#6366f1" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <StatusBar barStyle="light-content" backgroundColor="#0a0a14" />
+        <LoginScreen onLoginSuccess={() => setAuthenticated(true)} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="#0a0a14" />
 
       {/* App header */}
       <View style={styles.header}>
-        <Text style={styles.logo}>Vision OMR</Text>
-        <Text style={styles.subtitle}>Point camera at answer sheet</Text>
+        <View>
+          <Text style={styles.logo}>Vision OMR</Text>
+          <Text style={styles.subtitle}>Point camera at answer sheet</Text>
+        </View>
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Text style={styles.logoutText}>Logout</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Camera view */}
@@ -112,15 +165,21 @@ const App = () => {
 // ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root:          { flex: 1, backgroundColor: '#0a0a14' },
+  center:        { justifyContent: 'center', alignItems: 'center' },
 
   header: {
     paddingHorizontal: 20,
     paddingVertical:   14,
     borderBottomWidth: 1,
     borderBottomColor: '#1e1e2e',
+    flexDirection:     'row',
+    justifyContent:    'space-between',
+    alignItems:        'center',
   },
   logo:          { color: '#e2e8f0', fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
   subtitle:      { color: '#64748b', fontSize: 12, marginTop: 2 },
+  logoutBtn:     { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#1e1e2e' },
+  logoutText:    { color: '#ef4444', fontSize: 12, fontWeight: '600' },
 
   cameraWrapper: { flex: 1 },
 });

@@ -4,28 +4,29 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
-    "ios":     "react-native run-ios",
-    "start":   "react-native start",
-    "lint":    "eslint src/",
-    "test":    "jest"
+    "ios": "react-native run-ios",
+    "start": "react-native start",
+    "lint": "eslint src/",
+    "test": "jest"
   },
   "dependencies": {
-    "react":                              "18.2.0",
-    "react-native":                       "0.74.1",
-    "react-native-vision-camera":         "^4.0.0",
     "@bam.tech/react-native-image-resizer": "^3.0.9",
-    "axios":                              "^1.7.2"
+    "axios": "^1.7.2",
+    "react": "18.2.0",
+    "react-native": "0.74.1",
+    "react-native-keychain": "^10.0.0",
+    "react-native-vision-camera": "^4.0.0"
   },
   "devDependencies": {
-    "@babel/core":                        "^7.24.0",
-    "@babel/preset-env":                  "^7.24.0",
-    "@babel/runtime":                     "^7.24.0",
-    "@react-native/babel-preset":         "^0.74.0",
-    "@react-native/eslint-config":        "^0.74.0",
-    "@react-native/metro-config":         "^0.74.0",
-    "eslint":                             "^8.57.0",
-    "jest":                               "^29.7.0",
-    "babel-jest":                         "^29.7.0"
+    "@babel/core": "^7.24.0",
+    "@babel/preset-env": "^7.24.0",
+    "@babel/runtime": "^7.24.0",
+    "@react-native/babel-preset": "^0.74.0",
+    "@react-native/eslint-config": "^0.74.0",
+    "@react-native/metro-config": "^0.74.0",
+    "babel-jest": "^29.7.0",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0"
   },
   "jest": {
     "preset": "react-native"

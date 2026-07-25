@@ -10,20 +10,23 @@
  */
 
 import axios from 'axios';
+import * as Keychain from 'react-native-keychain';
+
+// Event listeners for auth expiration
+let onUnauthorizedCallback = null;
+
+export function setOnUnauthorized(callback) {
+  onUnauthorizedCallback = callback;
+}
 
 // ── Base URL ──────────────────────────────────────────────────────────────
-// Override via environment / build config:
-//   Android emulator   → 10.0.2.2 (maps to host loopback)
-//   iOS simulator      → 127.0.0.1
-//   Physical device    → replace with your machine's LAN IP
-
 const DATA_GATEWAY_URL =
   process.env.DATA_GATEWAY_URL ?? 'http://10.0.2.2:3000';
 
 // ── Axios instance ────────────────────────────────────────────────────────
 const apiClient = axios.create({
   baseURL: DATA_GATEWAY_URL,
-  timeout: 30_000, // 30 s – OMR processing can take a few seconds
+  timeout: 30_000,
   headers: {
     Accept: 'application/json',
   },
@@ -31,27 +34,63 @@ const apiClient = axios.create({
 
 // ── Request interceptor (add auth token if stored) ────────────────────────
 apiClient.interceptors.request.use(
-  config => {
-    // TODO: inject Bearer token from secure storage when auth is implemented
-    // const token = await SecureStore.getItemAsync('auth_token');
-    // if (token) config.headers.Authorization = `Bearer ${token}`;
+  async config => {
+    try {
+      const credentials = await Keychain.getGenericPassword();
+      if (credentials && credentials.password) {
+        config.headers.Authorization = `Bearer ${credentials.password}`;
+      }
+    } catch (e) {
+      console.warn('Failed to retrieve auth token from keychain:', e);
+    }
     return config;
   },
   error => Promise.reject(error),
 );
 
-// ── Response interceptor (normalise errors) ───────────────────────────────
+// ── Response interceptor (normalise errors & handle 401) ───────────────────
 apiClient.interceptors.response.use(
   response => response.data,
-  error => {
+  async error => {
+    if (error.response?.status === 401) {
+      await logoutUser();
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
+    }
     const message =
       error.response?.data?.detail ||
       error.response?.data?.message ||
+      error.response?.data?.error ||
       error.message ||
       'Unknown API error';
     return Promise.reject(new Error(message));
   },
 );
+
+// ── Auth Methods ──────────────────────────────────────────────────────────
+
+export async function loginUser(username, password) {
+  const res = await apiClient.post('/api/auth/login', { username, password });
+  if (res.token) {
+    await Keychain.setGenericPassword('session', res.token);
+  }
+  return res;
+}
+
+export async function logoutUser() {
+  try {
+    await apiClient.post('/api/auth/logout');
+  } catch (e) {
+    // Ignore backend logout network failures
+  }
+  await Keychain.resetGenericPassword();
+}
+
+export async function getStoredToken() {
+  const credentials = await Keychain.getGenericPassword();
+  return credentials ? credentials.password : null;
+}
 
 // ── API methods ───────────────────────────────────────────────────────────
 
