@@ -34,7 +34,7 @@ except ImportError:
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -199,6 +199,90 @@ def match_usn_against_roster(ocr_usn: str, roster_list: List[str]) -> str:
         return best_match
     return ocr_usn
 
+
+# ---------------------------------------------------------------------------
+# Input Quality Guards (TC#2 / TC#3 / TC#19)
+# ---------------------------------------------------------------------------
+
+# TC#2 threshold: trip if bubble count < fraction × expected total bubbles.
+# For a 15×2×4 sheet (120 total), trips below 30 detections.
+# NOTE: recalibrate once a TC#21 "best-case" baseline detection count is known.
+_MIN_BUBBLE_FRACTION: float = 0.25
+
+# TC#3 threshold: trip if detected question rows < fraction × questions_per_column.
+# For 15 rows/column, trips below ~8 rows (half-page crop).
+_MIN_ROW_FRACTION: float = 0.50
+
+
+def _check_bubble_coverage(
+    bubble_dets: list,
+    layout: "SheetLayout",
+    ambiguous_capture: bool = False,
+) -> dict | None:
+    """
+    Returns a rejection dict if the capture is unusable, otherwise None.
+
+    Three cases handled:
+      TC#19 — ambiguous_capture=True   → multiple sheets in frame
+      TC#2  — too few total detections  → blank page / wrong document
+      TC#3  — too few question rows     → half-page / cropped capture
+
+    The function is a pure probe — it does not modify any image data or
+    alter any state.  The main pipeline continues normally when None is
+    returned.
+    """
+    # TC#19 — multiple sheets in one photo (checked first, highest priority)
+    if ambiguous_capture:
+        return {
+            "rejected": True,
+            "reason": "multiple_sheets_detected",
+            "detail": (
+                "More than one sheet outline was detected in the image. "
+                "Please photograph a single OMR sheet at a time."
+            ),
+        }
+
+    expected_total = layout.total_bubbles   # e.g. 15 q × 2 cols × 4 opts = 120
+    actual_count   = len(bubble_dets)
+
+    # TC#2 — near-zero detections (blank page / wrong document)
+    if actual_count < _MIN_BUBBLE_FRACTION * expected_total:
+        return {
+            "rejected": True,
+            "reason": "insufficient_detections",
+            "detail": (
+                f"Only {actual_count} bubble(s) detected "
+                f"(expected ≥ {int(_MIN_BUBBLE_FRACTION * expected_total)}). "
+                "Ensure the OMR sheet fills the camera frame."
+            ),
+        }
+
+    # TC#3 — half-page / cropped capture: check unique question rows
+    if layout.questions_per_column > 0 and actual_count > 0:
+        y_centres = sorted((d.y1 + d.y2) / 2 for d in bubble_dets)
+        # Estimate median bubble height for adaptive row-gap threshold
+        heights = sorted(d.y2 - d.y1 for d in bubble_dets)
+        med_h = heights[len(heights) // 2]
+        row_gap = max(med_h * 1.5, 10.0)
+        rows = 1
+        for prev, cur in zip(y_centres, y_centres[1:]):
+            if cur - prev > row_gap:
+                rows += 1
+        min_rows = max(1, int(_MIN_ROW_FRACTION * layout.questions_per_column))
+        if rows < min_rows:
+            return {
+                "rejected": True,
+                "reason": "incomplete_sheet",
+                "detail": (
+                    f"Only {rows} question row(s) detected "
+                    f"(expected ≥ {min_rows}). "
+                    "Ensure the full OMR sheet is visible and not cropped."
+                ),
+            }
+
+    return None  # sheet looks plausible — continue normal pipeline
+
+
 @app.post("/evaluate", response_model=EvaluationResponse)
 async def evaluate_sheet(
     file: UploadFile = File(...),
@@ -226,7 +310,8 @@ async def evaluate_sheet(
         contents = await file.read()
 
         # ── 2. Preprocess: denoise + perspective warp ───────────────────────
-        clean_img = preprocess_image(contents)
+        #    Use preprocess_image_detect to also get the multi-sheet flag (TC#19)
+        clean_img, _warped, multi_sheet = preprocess_image_detect(contents)
 
         # ── 3. Localise: YOLOv8 + custom class-aware NMS ───────────────────
         detections = run_yolo_inference(clean_img)
@@ -244,6 +329,16 @@ async def evaluate_sheet(
 
         # ── 4. Separate USN detections from bubble detections ───────────────
         bubble_detections = [d for d in detections if d.class_name != "usn"]
+
+        # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────────
+        layout_for_guard = SheetLayout(
+            questions_per_column=15, num_columns=2, options="ABCD"
+        )
+        rejection = _check_bubble_coverage(
+            bubble_detections, layout_for_guard, ambiguous_capture=multi_sheet
+        )
+        if rejection:
+            return JSONResponse(status_code=422, content=rejection)
 
         # Extract USN region using OCR
         usn_value = assigned_usn
@@ -517,7 +612,33 @@ def run_batch_evaluation_sync(
                     usn_dets = [d for d in detections if d.class_name == "usn"]
                     
             bubble_dets = [d for d in detections if d.class_name != "usn"]
-            
+
+            # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
+            rejection = _check_bubble_coverage(
+                bubble_dets, layout, ambiguous_capture=False
+            )
+            if rejection:
+                t_end = time.perf_counter()
+                result = {
+                    "filename": filename,
+                    "usn": None,
+                    **rejection,
+                    "score_report": None,
+                    "annotated_image_b64": None,
+                    "preprocessed_image_b64": None,
+                    "original_image_b64": None,
+                    "bubbles": [],
+                    "processing_time_ms": int((t_end - t_start) * 1000),
+                }
+                with _tasks_lock:
+                    _tasks[task_id]["results"].append(result)
+                    _tasks[task_id]["done"] += 1
+                    progress_pct = int((_tasks[task_id]["done"] / len(all_sheets)) * 100)
+                    _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
+                    _tasks[task_id]["progress_pct"] = progress_pct
+                    _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
+                continue  # skip to next sheet; do not run classify_all / score_sheet
+
             usn_value = None
             if assigned_usns and idx < len(assigned_usns):
                 usn_value = assigned_usns[idx]

@@ -188,6 +188,52 @@ def _find_sheet_corners_otsu(gray: np.ndarray) -> np.ndarray | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# TC#19 — Multiple-sheet probe
+# ---------------------------------------------------------------------------
+
+# Minimum fraction of total image area for a quad to count as a candidate sheet.
+# A value of 0.20 means any rectangle covering ≥20% of the frame is considered
+# a sheet outline.  Two such quads → ambiguous capture.
+_SHEET_AREA_FRACTION: float = 0.20
+
+
+def _count_large_quads(gray: np.ndarray) -> int:
+    """
+    Count how many distinct large quad-shaped contours exist in the frame.
+
+    Returns an integer count.  Normally 1 for a good single-sheet capture;
+    >1 means there are likely multiple sheets in the same photo.
+
+    This is a *read-only* probe — it does not modify any image data and
+    shares the same Otsu-based thresholding already used by
+    _find_sheet_corners_otsu, so it adds negligible extra work.
+    """
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return 0
+
+    h, w = gray.shape[:2]
+    min_area = h * w * _SHEET_AREA_FRACTION
+    quad_count = 0
+
+    for c in sorted(contours, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(c) < min_area:
+            break  # remaining contours are too small to be sheets
+        hull   = cv2.convexHull(c)
+        peri   = cv2.arcLength(hull, True)
+        approx = cv2.approxPolyDP(hull, 0.02 * peri, True)
+        if len(approx) == 4 and cv2.isContourConvex(approx):
+            quad_count += 1
+
+    return quad_count
+
+
 def _perspective_warp(
     img: np.ndarray,
     output_size: Tuple[int, int] = (800, 1100),
@@ -223,21 +269,30 @@ def _perspective_warp(
     return warped
 
 
-def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool]:
+def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool, bool]:
     """
-    Full pre-processing pipeline returning both the cleaned image and a boolean
-    indicating whether the sheet was successfully aligned (perspective warped).
+    Full pre-processing pipeline returning the cleaned image plus two flags:
+      - warped      : True if perspective correction was successfully applied.
+      - multi_sheet : True if >1 large sheet-like quad was found in the frame
+                      (TC#19 multiple-sheets guard).  Callers should reject the
+                      image and ask the user to retake with a single sheet.
+
+    The multi_sheet probe is a read-only parallel pass on the same grayscale
+    data — it does NOT alter the warp path.
     """
     img = _decode(image_bytes)
     img = _ensure_min_resolution(img)
     img = _enhance_contrast(img)
     img = _bilateral_filter(img)
-    
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
+
+    # TC#19 — probe for multiple sheets BEFORE warping (read-only, no side-effects)
+    multi_sheet: bool = _count_large_quads(gray) > 1
+
     # Try Otsu binarization contour detection first
     corners = _find_sheet_corners_otsu(gray)
-    
+
     # Fallback to Canny edges
     if corners is None:
         edges = _canny_edges(gray)
@@ -246,7 +301,7 @@ def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool]:
         corners = _find_sheet_corners(edges_closed)
 
     if corners is None:
-        return img, False
+        return img, False, multi_sheet
 
     w, h = (800, 1100)
     dst = np.array(
@@ -254,10 +309,10 @@ def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool]:
     )
     M = cv2.getPerspectiveTransform(corners, dst)
     warped = cv2.warpPerspective(img, M, (w, h))
-    
+
     # Discard warp if it results in a low-contrast flat/solid color (desk mat, background)
     gray_warped = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
     if gray_warped.std() < 18.0:
-        return img, False
-        
-    return warped, True
+        return img, False, multi_sheet
+
+    return warped, True, multi_sheet
