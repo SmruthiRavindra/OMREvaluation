@@ -90,11 +90,18 @@ export async function submitStudentResult(req, res) {
   const cleanVersion = (version || 'DEFAULT').toUpperCase();
 
   try {
+    // Check if USN already exists for this session to flag duplicate submission
+    const existingCheck = await query(
+      "SELECT id FROM student_results WHERE session_id = $1 AND usn = $2",
+      [session_id, usn]
+    );
+    const was_duplicate = existingCheck.rows.length > 0;
+
     // Enforce expected students count limit check
     const sessionRes = await query("SELECT expected_students FROM exam_sessions WHERE id = $1", [session_id]);
     if (sessionRes.rows.length > 0) {
       const expected = parseInt(sessionRes.rows[0].expected_students, 10) || 0;
-      if (expected > 0) {
+      if (expected > 0 && !was_duplicate) {
         // Count other students already stored for this session
         const countRes = await query(
           "SELECT COUNT(*) as count FROM student_results WHERE session_id = $1 AND usn != $2",
@@ -130,7 +137,13 @@ export async function submitStudentResult(req, res) {
        RETURNING id`,
       [session_id, usn, cleanVersion, score, total, correct, incorrect, unanswered, multiple_marked, score_percent, JSON.stringify(per_question), annotated_image]
     );
-    return res.status(201).json({ id: result.rows[0].id, saved: true, version: cleanVersion });
+    return res.status(201).json({
+      id: result.rows[0].id,
+      saved: true,
+      was_duplicate: was_duplicate,
+      version: cleanVersion,
+      message: was_duplicate ? `Existing entry for ${usn} in session ${session_id} was updated.` : 'Result saved.'
+    });
   } catch (err) {
     console.error('[submitStudentResult] error:', err.message);
     return res.status(500).json({ error: 'Failed to persist student result' });

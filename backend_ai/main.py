@@ -553,6 +553,58 @@ class BatchEvaluationStartResponse(BaseModel):
     status: str
 
 
+def _update_db_task_status(task_id: str, status: str, total: int, done: int, results: list = None, error: str = None):
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            with conn.cursor() as cur:
+                res_json = json.dumps(results) if results is not None else '[]'
+                err_json = json.dumps([error]) if error else '[]'
+                cur.execute(
+                    """
+                    INSERT INTO batch_tasks (task_id, status, total_sheets, processed_sheets, results, errors, updated_at)
+                    VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, NOW())
+                    ON CONFLICT (task_id) DO UPDATE SET
+                      status = EXCLUDED.status,
+                      total_sheets = EXCLUDED.total_sheets,
+                      processed_sheets = EXCLUDED.processed_sheets,
+                      results = EXCLUDED.results,
+                      errors = EXCLUDED.errors,
+                      updated_at = NOW()
+                    """,
+                    (task_id, status, total, done, res_json, err_json)
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB Error _update_db_task_status]: {e}")
+
+def _get_db_task_status(task_id: str) -> Optional[dict]:
+    conn = get_db_connection()
+    if conn is not None:
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT task_id, status, total_sheets, processed_sheets, results, errors FROM batch_tasks WHERE task_id = %s", (task_id,))
+                row = cur.fetchone()
+            conn.close()
+            if row:
+                total = row['total_sheets'] or 1
+                done = row['processed_sheets']
+                progress_pct = int((done / total) * 100) if total > 0 else 0
+                return {
+                    "task_id": row['task_id'],
+                    "status": row['status'],
+                    "progress": f"{done}/{total}",
+                    "progress_pct": progress_pct,
+                    "done": done,
+                    "total": total,
+                    "results": row['results'] if isinstance(row['results'], list) else json.loads(row['results'] or '[]'),
+                    "errors": row['errors'] if isinstance(row['errors'], list) else json.loads(row['errors'] or '[]')
+                }
+        except Exception as e:
+            print(f"[DB Error _get_db_task_status]: {e}")
+    return None
+
 def run_batch_evaluation_sync(
     task_id: str,
     files_data: List[tuple],
@@ -588,11 +640,13 @@ def run_batch_evaluation_sync(
                 _tasks[task_id]["status"] = "completed"
                 _tasks[task_id]["progress"] = "0/0"
                 _tasks[task_id]["progress_pct"] = 100
+            _update_db_task_status(task_id, "completed", 0, 0, [])
             return
 
         with _tasks_lock:
             _tasks[task_id]["total"] = len(all_sheets)
             _tasks[task_id]["progress"] = f"0/{len(all_sheets)}"
+        _update_db_task_status(task_id, "processing", len(all_sheets), 0, [])
 
         for idx, (filename, content) in enumerate(all_sheets):
             t_start = time.perf_counter()
@@ -637,6 +691,10 @@ def run_batch_evaluation_sync(
                     _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
                     _tasks[task_id]["progress_pct"] = progress_pct
                     _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
+                    curr_results = list(_tasks[task_id]["results"])
+                    curr_done = _tasks[task_id]["done"]
+                    curr_status = _tasks[task_id]["status"]
+                _update_db_task_status(task_id, curr_status, len(all_sheets), curr_done, curr_results)
                 continue  # skip to next sheet; do not run classify_all / score_sheet
 
             usn_value = None
@@ -728,11 +786,16 @@ def run_batch_evaluation_sync(
                 _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
                 _tasks[task_id]["progress_pct"] = progress_pct
                 _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
+                curr_results = list(_tasks[task_id]["results"])
+                curr_done = _tasks[task_id]["done"]
+                curr_status = _tasks[task_id]["status"]
+            _update_db_task_status(task_id, curr_status, len(all_sheets), curr_done, curr_results)
                 
     except Exception as e:
         with _tasks_lock:
             _tasks[task_id]["status"] = "failed"
             _tasks[task_id]["error"] = str(e)
+        _update_db_task_status(task_id, "failed", len(files_data), 0, [], error=str(e))
 
 
 async def run_batch_evaluation_async(
@@ -789,6 +852,7 @@ async def batch_evaluate_async(
             "total": len(files_data),
             "results": []
         }
+    _update_db_task_status(task_id, "queued", len(files_data), 0, [])
 
     import json
     roster_list = json.loads(roster) if roster else []
@@ -819,6 +883,9 @@ async def get_task_status(task_id: str):
     with _tasks_lock:
         task = _tasks.get(task_id)
     if not task:
+        db_task = _get_db_task_status(task_id)
+        if db_task:
+            return db_task
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 

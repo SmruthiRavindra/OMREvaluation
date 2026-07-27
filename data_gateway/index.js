@@ -113,10 +113,14 @@ const upload = multer({
   limits:  { fileSize: 10 * 1024 * 1024 }, // 10 MB max
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+    const isHeic = file.mimetype.includes('heic') || file.mimetype.includes('heif') || /\.(heic|heif)$/i.test(file.originalname);
+    if (isHeic) {
+      return cb(new Error('HEIC format is not supported directly. Please convert your sheet to JPEG or PNG before uploading.'));
+    }
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error(`Unsupported MIME type: ${file.mimetype}`), false);
+      cb(new Error('Invalid file type. Only JPEG, PNG, and PDF files are supported.'));
     }
   },
 });

@@ -128,6 +128,17 @@ export async function submitResults(req, res) {
   } = req.body ?? {};
 
   try {
+    let was_duplicate = false;
+    if (session_id && student_id) {
+      const existing = await query(
+        `SELECT id FROM student_results WHERE session_id = $1 AND usn = $2`,
+        [session_id, student_id]
+      );
+      if (existing.rows.length > 0) {
+        was_duplicate = true;
+      }
+    }
+
     const result = await query(
       `INSERT INTO evaluations
          (student_id, session_id, filled_count, empty_count, ambiguous_count,
@@ -146,7 +157,12 @@ export async function submitResults(req, res) {
       ],
     );
 
-    return res.status(201).json({ id: result.rows[0].id, saved: true });
+    return res.status(201).json({
+      id: result.rows[0].id,
+      saved: true,
+      was_duplicate,
+      message: was_duplicate ? `Existing result for USN ${student_id} was updated/overwritten.` : 'Result saved.'
+    });
   } catch (err) {
     console.error('[submitResults] db error:', err.message);
     return res.status(500).json({ error: 'Failed to persist results.' });

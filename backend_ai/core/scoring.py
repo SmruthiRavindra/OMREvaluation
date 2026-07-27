@@ -85,6 +85,18 @@ class QuestionResult:
 
 
 @dataclass
+class MarkingScheme:
+    """Configurable scoring rules."""
+    correct: float = 1.0
+    incorrect: float = 0.0
+    unanswered: float = 0.0
+    multiple_marked: float = 0.0
+
+
+DEFAULT_MARKING_SCHEME = MarkingScheme()
+
+
+@dataclass
 class ScoreReport:
     """Aggregate scoring output."""
     total_questions: int
@@ -95,6 +107,8 @@ class ScoreReport:
     multiple_marked: int
     ambiguous: int
     score_percent: float
+    raw_score: float = 0.0
+    max_score: float = 0.0
     per_question: List[QuestionResult] = field(default_factory=list)
 
 
@@ -221,6 +235,7 @@ def score_sheet(
     answer_key: Optional[Dict[int, str]] = None,
     layout: SheetLayout = DEFAULT_LAYOUT,
     usn_y2: Optional[float] = None,
+    marking_scheme: MarkingScheme = DEFAULT_MARKING_SCHEME,
 ) -> ScoreReport:
     """
     Grade a complete OMR sheet.
@@ -237,6 +252,8 @@ def score_sheet(
     else:
         q_numbers = list(range(1, (layout.total_questions if layout else len(grid)) + 1))
         total_questions = len(q_numbers)
+
+    raw_score = 0.0
 
     for q_num in q_numbers:
         options = grid.get(q_num, {})
@@ -256,23 +273,29 @@ def score_sheet(
         if has_ambig and not marked:
             status = AnswerStatus.AMBIGUOUS
             ambiguous += 1
+            raw_score += marking_scheme.unanswered
         elif len(marked) == 0:
             status = AnswerStatus.UNANSWERED
             unanswered += 1
+            raw_score += marking_scheme.unanswered
         elif len(marked) > 1:
             status = AnswerStatus.MULTIPLE_MARKED
             multiple_marked += 1
+            raw_score += marking_scheme.multiple_marked
         elif answer_key is not None and correct_option is not None:
             if marked[0] == correct_option:
                 status = AnswerStatus.CORRECT
                 correct += 1
+                raw_score += marking_scheme.correct
             else:
                 status = AnswerStatus.INCORRECT
                 incorrect += 1
+                raw_score += marking_scheme.incorrect
         else:
             # No answer key — just record as answered
             status = AnswerStatus.CORRECT  # neutral when no key
             correct += 1
+            raw_score += marking_scheme.correct
 
         per_question.append(
             QuestionResult(
@@ -285,7 +308,11 @@ def score_sheet(
         )
 
     answered = correct + incorrect + multiple_marked
-    score_pct = (correct / total_questions * 100) if total_questions > 0 else 0.0
+    max_possible_score = total_questions * marking_scheme.correct
+    if max_possible_score > 0:
+        score_pct = max(0.0, (raw_score / max_possible_score) * 100)
+    else:
+        score_pct = 0.0
 
     return ScoreReport(
         total_questions=total_questions,
@@ -296,5 +323,7 @@ def score_sheet(
         multiple_marked=multiple_marked,
         ambiguous=ambiguous,
         score_percent=round(score_pct, 2),
+        raw_score=round(raw_score, 2),
+        max_score=round(max_possible_score, 2),
         per_question=per_question,
     )

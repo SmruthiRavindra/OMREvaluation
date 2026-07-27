@@ -2568,7 +2568,12 @@
             body: JSON.stringify(payload)
           });
           
+          let duplicateCount = 0;
           if (resp.ok) {
+             const resData = await resp.json().catch(() => ({}));
+             if (resData && resData.was_duplicate) {
+               duplicateCount++;
+             }
              successCount++;
           } else {
              const errData = await resp.json().catch(() => ({}));
@@ -2578,7 +2583,11 @@
           }
         }
         
-        statusEl.textContent = `✅ Saved ${successCount}/${itemsToSubmit.length} results to database!`;
+        let msg = `✅ Saved ${successCount}/${itemsToSubmit.length} results to database!`;
+        if (duplicateCount > 0) {
+          msg += ` (ℹ️ ${duplicateCount} existing record(s) updated)`;
+        }
+        statusEl.textContent = msg;
         statusEl.style.color = 'var(--green)';
         
         window._resultSaved = true;
