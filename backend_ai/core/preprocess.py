@@ -19,13 +19,25 @@ from typing import Tuple
 # Minimum width we want to work with for reliable bubble detection
 MIN_WIDTH = 800
 
+# Cache CLAHE instance at module level — creating it per-request wastes ~1-2ms
+# and allocates a new histogram table each time.
+_CLAHE = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def preprocess_image(image_bytes: bytes) -> np.ndarray:
     """
-    Full pre-processing pipeline: decode → upscale → enhance → denoise → warp.
+    Full pre-processing pipeline: decode → upscale → denoise → enhance → warp.
+
+    Order matters for performance:
+      1. Decode raw bytes
+      2. Downscale to MIN_WIDTH — bilateral filter cost scales with pixel count,
+         so we shrink first and pay the filter cost only on the working resolution.
+      3. Bilateral filter — noise reduction at the smaller resolution (~4-9× faster)
+      4. CLAHE contrast enhancement — cheap at working resolution
+      5. Perspective warp — homography transform
 
     Parameters
     ----------
@@ -38,9 +50,9 @@ def preprocess_image(image_bytes: bytes) -> np.ndarray:
         Perspective-corrected, denoised BGR image ready for YOLO inference.
     """
     img = _decode(image_bytes)
-    img = _ensure_min_resolution(img)
+    img = _ensure_min_resolution(img)   # downscale first!
+    img = _bilateral_filter(img)        # now runs on 800px, not 4000px
     img = _enhance_contrast(img)
-    img = _bilateral_filter(img)
     img = _perspective_warp(img)
     return img
 
@@ -60,29 +72,36 @@ def _decode(image_bytes: bytes) -> np.ndarray:
 
 def _ensure_min_resolution(img: np.ndarray) -> np.ndarray:
     """
-    Upscale very small mobile images so that bubbles are large enough
-    for reliable classification. Low-res cameras (e.g., 640×480) produce
-    bubbles that are only ~8 pixels wide, making fill-ratio unreliable.
+    Downscale very large images to MIN_WIDTH before the expensive bilateral
+    filter step.  Also upscales very small mobile images (e.g., 640×480) so
+    that bubbles are large enough for reliable fill-ratio classification.
+
+    Running this BEFORE bilateral filter means the filter operates on
+    ~640k pixels instead of potentially 4-8M pixels on a 4K phone image
+    — a 4-9× speedup for that step alone.
     """
     h, w = img.shape[:2]
-    if w < MIN_WIDTH:
-        scale = MIN_WIDTH / w
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-    return img
+    if w == MIN_WIDTH:
+        return img
+    scale = MIN_WIDTH / w
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+    # Use INTER_AREA for downscaling (better quality), INTER_CUBIC for upscaling
+    interp = cv2.INTER_AREA if w > MIN_WIDTH else cv2.INTER_CUBIC
+    return cv2.resize(img, (new_w, new_h), interpolation=interp)
 
 
 def _enhance_contrast(img: np.ndarray) -> np.ndarray:
     """
     Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to
     normalize uneven lighting from mobile camera flashes and shadows.
-    This is applied per-channel in LAB color space so colors are preserved.
+    Applied per-channel in LAB color space so colors are preserved.
+
+    Uses the module-level cached _CLAHE instance (no per-call allocation).
     """
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    l = clahe.apply(l)
+    l = _CLAHE.apply(l)   # use cached instance
     lab = cv2.merge([l, a, b])
     return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
@@ -277,13 +296,16 @@ def preprocess_image_detect(image_bytes: bytes) -> Tuple[np.ndarray, bool, bool]
                       (TC#19 multiple-sheets guard).  Callers should reject the
                       image and ask the user to retake with a single sheet.
 
+    Pipeline order (same as preprocess_image for consistency):
+      decode → downscale → bilateral filter → CLAHE → [multi-sheet probe] → warp
+
     The multi_sheet probe is a read-only parallel pass on the same grayscale
     data — it does NOT alter the warp path.
     """
     img = _decode(image_bytes)
-    img = _ensure_min_resolution(img)
+    img = _ensure_min_resolution(img)   # downscale first
+    img = _bilateral_filter(img)        # filter at working resolution
     img = _enhance_contrast(img)
-    img = _bilateral_filter(img)
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
