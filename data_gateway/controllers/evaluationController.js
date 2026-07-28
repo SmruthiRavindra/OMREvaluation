@@ -328,7 +328,9 @@ export async function evaluateBatchV1(req, res) {
 export async function getTaskStatusV1(req, res) {
   const { taskId } = req.params;
   try {
-    const { data } = await axios.get(`${FASTAPI_URL}/api/v1/tasks/${taskId}`);
+    const { data } = await axios.get(`${FASTAPI_URL}/api/v1/tasks/${taskId}`, {
+      timeout: 10_000,
+    });
     return res.json(data);
   } catch (err) {
     const detail =

@@ -919,6 +919,9 @@ async def batch_evaluate_async(
 async def get_task_status(task_id: str):
     with _tasks_lock:
         task = _tasks.get(task_id)
+        if task:
+            task = dict(task)
+            task["results"] = list(task.get("results", []))
     if not task:
         db_task = _get_db_task_status(task_id)
         if db_task:
