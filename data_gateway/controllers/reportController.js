@@ -97,7 +97,7 @@ export async function submitStudentResult(req, res) {
     );
     const was_duplicate = existingCheck.rows.length > 0;
 
-    // Enforce expected students count limit check
+    // Automatically adjust expected_students count if extra sheets are scanned
     const sessionRes = await query("SELECT expected_students FROM exam_sessions WHERE id = $1", [session_id]);
     if (sessionRes.rows.length > 0) {
       const expected = parseInt(sessionRes.rows[0].expected_students, 10) || 0;
@@ -109,9 +109,11 @@ export async function submitStudentResult(req, res) {
         );
         const currentCount = parseInt(countRes.rows[0].count, 10) || 0;
         if (currentCount >= expected) {
-          return res.status(400).json({
-            error: `Session limit reached. Cannot add more than ${expected} student results.`
-          });
+          // Auto-expand session expected count to accommodate extra student evaluations
+          await query(
+            "UPDATE exam_sessions SET expected_students = $1 WHERE id = $2",
+            [currentCount + 1, session_id]
+          );
         }
       }
     }
