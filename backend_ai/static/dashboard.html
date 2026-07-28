@@ -896,16 +896,20 @@
 
     <!-- Page 3: Results & Pipeline -->
     <div class="page-view" id="pageView3">
-      <!-- Unsaved Results Warning Modal -->
-      <div id="unsavedWarningModal" style="display:none; position:fixed; inset:0; z-index:1001; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
-        <div style="max-width:480px; width:90%; background:var(--bg-card); border-radius:var(--radius); border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.3); padding:24px; text-align:center;">
-          <div style="font-size:40px; margin-bottom:12px; color:var(--amber);">⚠️</div>
-          <h3 style="font-size:16px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Unsaved Grading Results</h3>
-          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">This scanned result has not been saved to the database. Proceeding to a new scan will discard these results.</p>
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            <button id="btnWarningSaveProceed" class="btn btn-primary" style="background:var(--green); font-size:13px; padding:10px 16px;">💾 Save & Proceed</button>
-            <button id="btnWarningDiscardProceed" class="btn btn-secondary" style="font-size:13px; padding:10px 16px; color: var(--text-primary); border-color: var(--border);">Discard & Scan Next</button>
-            <button onclick="document.getElementById('unsavedWarningModal').style.display='none'" class="btn btn-secondary" style="background:transparent; border:none; color:var(--text-muted); font-size:12px; padding:4px; cursor:pointer;">Cancel</button>
+      <!-- Input Quality & Rejection Error Popup Modal -->
+      <div id="qualityErrorModal" style="display:none; position:fixed; inset:0; z-index:2000; background:rgba(15,23,42,0.75); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); align-items:center; justify-content:center;">
+        <div style="max-width:520px; width:90%; background:var(--bg-card); border-radius:16px; border:2px solid var(--red); box-shadow:0 25px 50px -12px rgba(220,38,38,0.25); padding:28px; text-align:center; position:relative;">
+          <div style="width:64px; height:64px; border-radius:50%; background:rgba(220,38,38,0.12); color:var(--red); display:flex; align-items:center; justify-content:center; margin:0 auto 16px auto; font-size:32px; font-weight:bold;">
+            ⚠️
+          </div>
+          <h3 id="qualityErrorTitle" style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:10px;">Scan Quality Rejected</h3>
+          <div id="qualityErrorDetail" style="font-size:13px; color:var(--text-primary); margin-bottom:20px; line-height:1.6; background:var(--bg-input); padding:14px; border-radius:10px; border:1px solid var(--border); font-weight:600; text-align:left;">
+            Only 4 question row(s) detected (expected ≥ 7). Ensure the full OMR sheet is visible and not cropped.
+          </div>
+          <div style="display:flex; gap:12px; justify-content:center;">
+            <button id="btnQualityErrorDismiss" onclick="document.getElementById('qualityErrorModal').style.display='none'" class="btn btn-primary" style="background:var(--accent); padding:10px 24px; font-size:13px; font-weight:700; width:auto;">
+              📸 Retake / Try Again
+            </button>
           </div>
         </div>
       </div>
@@ -1454,6 +1458,15 @@
     const errorAlert   = document.getElementById('errorAlert');
     const reviewAlert  = document.getElementById('reviewAlert');
 
+    function showQualityErrorModal(title, detail) {
+      const modal = document.getElementById('qualityErrorModal');
+      const titleEl = document.getElementById('qualityErrorTitle');
+      const detailEl = document.getElementById('qualityErrorDetail');
+      if (titleEl) titleEl.textContent = title || 'Scan Quality Rejected';
+      if (detailEl) detailEl.textContent = detail || 'Please ensure the full OMR sheet is visible, in focus, and uncropped.';
+      if (modal) modal.style.display = 'flex';
+    }
+
     // Answer Key & Grading Elements
     const sessionIdInput     = document.getElementById('sessionIdInput');
     const answerKeyInput     = document.getElementById('answerKeyInput');
@@ -1900,6 +1913,7 @@
         }
       } catch (err) {
         showError(`Pipeline error: ${err.message}`);
+        showQualityErrorModal('Scan Quality Rejected', err.message);
         evaluateBtn.disabled = false;
         evaluateBtn.innerHTML = '🔍 Run Evaluation Pipeline';
         overlay.remove();
@@ -3284,16 +3298,20 @@
           
           if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
-            webcamStatus.textContent = `❌ Capture rejected: ${errData.detail || errData.error || 'Invalid OMR sheet'}`;
+            const errMsg = errData.detail || errData.error || 'Invalid OMR sheet';
+            webcamStatus.textContent = `❌ Capture rejected: ${errMsg}`;
             webcamStatus.style.color = 'var(--red)';
+            showQualityErrorModal('Scan Quality Rejected', errMsg);
             manualCaptureBtn.disabled = false;
             return;
           }
           
           const data = await resp.json();
           if (data.rejected) {
-            webcamStatus.textContent = `❌ Capture rejected: ${data.detail || data.reason}`;
+            const errMsg = data.detail || data.reason || 'Input quality check failed';
+            webcamStatus.textContent = `❌ Capture rejected: ${errMsg}`;
             webcamStatus.style.color = 'var(--red)';
+            showQualityErrorModal('Scan Quality Rejected', errMsg);
             manualCaptureBtn.disabled = false;
             return;
           }
