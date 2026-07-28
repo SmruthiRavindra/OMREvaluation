@@ -269,8 +269,8 @@ def _check_bubble_coverage(
         y_centres = sorted((d.y1 + d.y2) / 2 for d in bubble_dets)
         # Estimate median bubble height for adaptive row-gap threshold
         heights = sorted(d.y2 - d.y1 for d in bubble_dets)
-        med_h = heights[len(heights) // 2]
-        row_gap = max(med_h * 1.5, 10.0)
+        med_h = heights[len(heights) // 2] if heights else 20.0
+        row_gap = max(med_h * 0.5, 6.0)
         rows = 1
         for prev, cur in zip(y_centres, y_centres[1:]):
             if cur - prev > row_gap:
