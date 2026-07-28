@@ -154,12 +154,20 @@ def _find_sheet_corners(edges: np.ndarray) -> np.ndarray | None:
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2).astype(np.float32)
             return _order_points(pts)
+        elif 4 < len(approx) <= 8:
+            # Fallback for tilted/rotated sheets (~25° tilt) where edge aliasing creates extra vertices
+            rect = cv2.minAreaRect(hull)
+            box = cv2.boxPoints(rect).astype(np.float32)
+            return _order_points(box)
             
     return None
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
-    """Order corners as [top-left, top-right, bottom-right, bottom-left]."""
+    """
+    Order corners as [top-left, top-right, bottom-right, bottom-left].
+    Always enforces portrait orientation (top edge <= side edge).
+    """
     rect = np.zeros((4, 2), dtype=np.float32)
     s = pts.sum(axis=1)
     diff = np.diff(pts, axis=1)
@@ -167,6 +175,13 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
     rect[2] = pts[np.argmax(s)]    # BR
     rect[1] = pts[np.argmin(diff)] # TR
     rect[3] = pts[np.argmax(diff)] # BL
+
+    top_len = np.linalg.norm(rect[1] - rect[0])
+    side_len = np.linalg.norm(rect[3] - rect[0])
+    if top_len > side_len * 1.05:
+        # Sheet was captured landscape / tilted 90 deg; shift points so short edge is top
+        rect = np.array([rect[3], rect[0], rect[1], rect[2]], dtype=np.float32)
+
     return rect
 
 
@@ -203,8 +218,46 @@ def _find_sheet_corners_otsu(gray: np.ndarray) -> np.ndarray | None:
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2).astype(np.float32)
             return _order_points(pts)
+        elif 4 < len(approx) <= 8:
+            rect = cv2.minAreaRect(hull)
+            box = cv2.boxPoints(rect).astype(np.float32)
+            return _order_points(box)
             
     return None
+
+
+def deskew_image_from_detections(img: np.ndarray, detections: list) -> Tuple[np.ndarray, float, bool]:
+    """
+    Auto-rotate/deskew an image using the minimum bounding rectangle of detected bubble centers.
+    Corrects rotational tilts from ~2.5° up to ±45°.
+    Returns (deskewed_img, angle_degrees, was_deskewed).
+    """
+    bubble_dets = [d for d in detections if getattr(d, 'class_name', '') != "usn"]
+    if len(bubble_dets) < 12:
+        return img, 0.0, False
+
+    centers = np.array([[(d.x1 + d.x2) / 2, (d.y1 + d.y2) / 2] for d in bubble_dets], dtype=np.float32)
+    rect = cv2.minAreaRect(centers)
+    (cx, cy), (w_r, h_r), angle = rect
+
+    # Normalize OpenCV minAreaRect angle to [-45, 45]
+    if w_r < h_r:
+        angle_deg = angle
+    else:
+        angle_deg = angle + 90 if angle < 0 else angle - 90
+
+    while angle_deg > 45.0:
+        angle_deg -= 90.0
+    while angle_deg < -45.0:
+        angle_deg += 90.0
+
+    if abs(angle_deg) < 2.5 or abs(angle_deg) > 45.0:
+        return img, 0.0, False
+
+    h_img, w_img = img.shape[:2]
+    M = cv2.getRotationMatrix2D((w_img / 2, h_img / 2), angle_deg, 1.0)
+    deskewed = cv2.warpAffine(img, M, (w_img, h_img), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+    return deskewed, angle_deg, True
 
 
 # ---------------------------------------------------------------------------

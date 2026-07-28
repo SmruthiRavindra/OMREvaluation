@@ -1,4 +1,4 @@
-﻿import types, sys, os, numpy as np, cv2, pytest
+import types, sys, os, numpy as np, cv2, pytest
 sys.path.insert(0, os.path.join(os.path.dirname('/app/tests/'), '..'))
 from main import _check_bubble_coverage, _MIN_BUBBLE_FRACTION, _MIN_ROW_FRACTION
 from core.scoring import SheetLayout
@@ -64,3 +64,19 @@ class TestRegressionNormalSheet:
                     dets.append(_det(y1=row*50, y2=row*50+10, x1=cb*300+opt*15, x2=cb*300+opt*15+12))
         assert len(dets) == EXPECTED_TOTAL
         assert _check_bubble_coverage(dets, LAYOUT) is None
+
+class TestDeskewing:
+    def test_deskew_tilted_bubbles(self):
+        from core.preprocess import deskew_image_from_detections
+        img = np.zeros((600, 600, 3), dtype=np.uint8)
+        angle_rad = np.radians(25)
+        dets = []
+        for r in range(10):
+            for c in range(4):
+                x_raw, y_raw = c * 30 + 50, r * 40 + 50
+                x_rot = x_raw * np.cos(angle_rad) - y_raw * np.sin(angle_rad) + 200
+                y_rot = x_raw * np.sin(angle_rad) + y_raw * np.cos(angle_rad) + 50
+                dets.append(_det(y1=y_rot, y2=y_rot+10, x1=x_rot, x2=x_rot+10))
+        deskewed, tilt_angle, was_deskewed = deskew_image_from_detections(img, dets)
+        assert was_deskewed is True
+        assert abs(abs(tilt_angle) - 25.0) < 5.0

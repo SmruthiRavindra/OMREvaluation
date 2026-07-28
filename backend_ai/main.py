@@ -42,7 +42,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.preprocess import preprocess_image, preprocess_image_detect
+from core.preprocess import preprocess_image, preprocess_image_detect, deskew_image_from_detections
 from core.localization import run_yolo_inference
 from core.classification import classify_all, BubbleState
 from core import extract_usn_from_roi
@@ -328,6 +328,11 @@ async def evaluate_sheet(
         # ── 3. Localise: YOLOv8 + custom class-aware NMS ───────────────────
         detections = run_yolo_inference(clean_img)
 
+        # Auto-deskew rotational tilt (e.g. 25° tilt)
+        clean_img, tilt_angle, was_deskewed = deskew_image_from_detections(clean_img, detections)
+        if was_deskewed:
+            detections = run_yolo_inference(clean_img)
+
         # Check for upside-down orientation using USN bounding box
         usn_detections = [d for d in detections if d.class_name == "usn"]
         if usn_detections:
@@ -609,6 +614,10 @@ def _process_single_sheet(
     clean_img, is_warped, multi_sheet = preprocess_image_detect(content)
     warp_status = "WARPED_SUCCESS" if is_warped else "UNWARPED_FALLBACK"
     detections = run_yolo_inference(clean_img)
+
+    clean_img, tilt_angle, was_deskewed = deskew_image_from_detections(clean_img, detections)
+    if was_deskewed:
+        detections = run_yolo_inference(clean_img)
 
     # Check for upside-down orientation using USN bounding box
     usn_dets = [d for d in detections if d.class_name == "usn"]
@@ -1317,6 +1326,10 @@ async def debug_evaluate(
         # Localize
         detections = run_yolo_inference(clean_img)
 
+        clean_img, tilt_angle, was_deskewed = deskew_image_from_detections(clean_img, detections)
+        if was_deskewed:
+            detections = run_yolo_inference(clean_img)
+
         # Check for upside-down orientation using USN bounding box
         usn_dets = [d for d in detections if d.class_name == "usn"]
         if usn_dets:
@@ -1577,6 +1590,10 @@ async def websocket_evaluate(websocket: WebSocket):
             # Localize
             detections = run_yolo_inference(clean_img)
             
+            clean_img, tilt_angle, was_deskewed = deskew_image_from_detections(clean_img, detections)
+            if was_deskewed:
+                detections = run_yolo_inference(clean_img)
+
             # Check for upside-down orientation using USN bounding box
             usn_dets = [d for d in detections if d.class_name == "usn"]
             if usn_dets:
