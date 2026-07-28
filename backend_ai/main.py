@@ -1529,7 +1529,7 @@ async def websocket_evaluate(websocket: WebSocket):
             
             # Preprocess and check alignment
             try:
-                clean_img, aligned = preprocess_image_detect(img_bytes)
+                clean_img, aligned, multi_sheet = preprocess_image_detect(img_bytes)
             except Exception as e:
                 print(f"[WebSocket Preprocess Error] {e}")
                 continue
@@ -1564,6 +1564,26 @@ async def websocket_evaluate(websocket: WebSocket):
                     usn_dets = [d for d in detections if d.class_name == "usn"]
                     
             bubble_dets = [d for d in detections if d.class_name != "usn"]
+            
+            # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
+            layout = SheetLayout(questions_per_column=15, num_columns=2, options="ABCD")
+            rejection = _check_bubble_coverage(
+                bubble_dets, layout, ambiguous_capture=multi_sheet
+            )
+            if rejection:
+                response = {
+                    "aligned": False,
+                    "usn": "ALIGNING",
+                    "filled_count": 0,
+                    "empty_count": 0,
+                    "ambiguous_count": 0,
+                    "needs_manual_review": False,
+                    "bubbles": [],
+                    "annotated_image_b64": None,
+                    "message": rejection.get("detail", "Aligning OMR sheet...")
+                }
+                await websocket.send_text(json.dumps(response))
+                continue
             
             # Extract USN
             usn_value = None
