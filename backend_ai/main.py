@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Worker thread count for concurrent batch sheet processing
-_BATCH_MAX_WORKERS: int = int(os.getenv("BATCH_MAX_WORKERS", "4"))
+_BATCH_MAX_WORKERS: int = int(os.getenv("BATCH_MAX_WORKERS", "2"))
 
 try:
     import psycopg2
@@ -538,7 +538,20 @@ def _update_db_task_status(task_id: str, status: str, total: int, done: int, res
     if conn is not None:
         try:
             with conn.cursor() as cur:
-                res_json = json.dumps(results) if results is not None else '[]'
+                # Strip heavy base64 image strings during intermediate progress updates to avoid multi-MB JSON DB locks
+                sanitized_results = []
+                if results:
+                    if status == "completed":
+                        sanitized_results = results
+                    else:
+                        for r in results:
+                            item = dict(r)
+                            item.pop("annotated_image_b64", None)
+                            item.pop("preprocessed_image_b64", None)
+                            item.pop("original_image_b64", None)
+                            sanitized_results.append(item)
+
+                res_json = json.dumps(sanitized_results) if results is not None else '[]'
                 err_json = json.dumps([error]) if error else '[]'
                 cur.execute(
                     """
