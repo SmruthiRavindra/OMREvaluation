@@ -44,6 +44,11 @@ services:
       - ./backend_ai:/app
     environment:
       - PYTHONUNBUFFERED=1
+      - PGHOST=db
+      - PGPORT=5432
+      - PGDATABASE=omr_db
+      - PGUSER=omr_user
+      - PGPASSWORD=omr_password_dev
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

@@ -812,7 +812,8 @@ def run_batch_evaluation_sync(
                     curr_results = list(_tasks[task_id]["results"])
                     curr_status = _tasks[task_id]["status"]
 
-                _update_db_task_status(task_id, curr_status, len(all_sheets), done_cnt, curr_results)
+                if curr_status == "completed" or done_cnt % 5 == 0 or done_cnt == len(all_sheets):
+                    _update_db_task_status(task_id, curr_status, len(all_sheets), done_cnt, curr_results)
 
     except Exception as e:
         with _tasks_lock:

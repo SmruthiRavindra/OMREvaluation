@@ -2558,14 +2558,22 @@
       const section = document.getElementById('sectionInput').value.trim() || '';
       const expectedStudents = parseInt(document.getElementById('expectedStudentsInput').value) || 0;
       
+      const token = localStorage.getItem('session_token') || '';
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      };
+      
       try {
         // First ensure session exists (create if not)
         try {
-          const checkResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`);
+          const checkResp = await fetch(`${GATEWAY_URL}/api/sessions/${sessionId}`, {
+            headers: authHeaders
+          });
           if (checkResp.status === 404) {
             await fetch(`${GATEWAY_URL}/api/sessions`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: authHeaders,
               body: JSON.stringify({ 
                 id: sessionId, 
                 subject: subject,
@@ -2578,6 +2586,7 @@
         } catch(e) { console.warn(e); }
         
         let successCount = 0;
+        let duplicateCount = 0;
         // Then submit each result
         for (const item of itemsToSubmit) {
           const report = item.score_report;
@@ -2607,11 +2616,10 @@
           
           const resp = await fetch(`${GATEWAY_URL}/api/results`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders,
             body: JSON.stringify(payload)
           });
           
-          let duplicateCount = 0;
           if (resp.ok) {
              const resData = await resp.json().catch(() => ({}));
              if (resData && resData.was_duplicate) {
