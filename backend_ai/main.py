@@ -42,7 +42,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from core.preprocess import preprocess_image, preprocess_image_detect, deskew_image_from_detections
+from core.preprocess import preprocess_image, preprocess_image_detect
 from core.localization import run_yolo_inference
 from core.classification import classify_all, BubbleState
 from core import extract_usn_from_roi
