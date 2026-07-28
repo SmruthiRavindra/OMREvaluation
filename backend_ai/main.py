@@ -658,8 +658,11 @@ def _process_single_sheet(
     usn_value = None
     if assigned_usns and idx < len(assigned_usns):
         usn_value = assigned_usns[idx]
+    elif roster_list and idx < len(roster_list):
+        usn_value = roster_list[idx]
     elif usn_dets:
         d = usn_dets[0]
+        # Run fast USN extraction (PyTesseract first; if OCR fails and roster exists, use roster fallback)
         usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
         if usn_value and roster_list:
             usn_value = match_usn_against_roster(usn_value, roster_list)
