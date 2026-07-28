@@ -86,7 +86,8 @@ const candidateStaticPaths = [
 const staticPath = candidateStaticPaths.find(p => fs.existsSync(p)) || candidateStaticPaths[0];
 
 // ── Middleware ─────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
+const ALLOWED_ORIGINS_RAW = process.env.ALLOWED_ORIGINS ?? '';
+const ALLOWED_ORIGINS = ALLOWED_ORIGINS_RAW
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
@@ -94,8 +95,11 @@ const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:3000')
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false })); // security headers (allow CORS)
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin) return cb(null, true);
+    // If no allow-list is configured, allow all origins (local dev / LAN access)
+    if (ALLOWED_ORIGINS.length === 0) return cb(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     cb(new Error(`CORS: origin '${origin}' not in allow-list`));
   },
   credentials: true,
