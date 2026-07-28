@@ -776,7 +776,7 @@
               <img id="webcamRenderImage" style="width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--radius); display: none; margin: 0; border: 2px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,0.5);" alt="Live Evaluation HUD" />
               
               <!-- Manual Capture Button -->
-              <button id="manualCaptureBtn" style="display: none; position: absolute; top: 16px; left: 16px; z-index: 10; background: var(--accent); color: white; border: none; border-radius: 20px; padding: 6px 14px; font-size: 11px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: background 0.2s;">
+              <button id="manualCaptureBtn" style="display: none; position: absolute; top: 16px; left: 16px; z-index: 10; background: var(--accent); color: white; border: none; border-radius: 20px; padding: 8px 16px; font-size: 12px; font-weight: 700; cursor: pointer; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); transition: background 0.2s, transform 0.1s;">
                 📸 Capture Now
               </button>
 
@@ -3165,6 +3165,8 @@
         });
         webcamVideo.srcObject = localStream;
         document.getElementById('webcamScanGuide').style.display = 'block';
+        const manualBtn = document.getElementById('manualCaptureBtn');
+        if (manualBtn) manualBtn.style.display = 'flex';
         startWebcamBtn.style.display = 'none';
         stopWebcamBtn.style.display = 'inline-block';
         webcamStatus.textContent = 'Connecting network tunnel...';
@@ -3211,6 +3213,8 @@
       stopScanning();
       window._webcamFrozen = false;
       window._frozenResult = null;
+      const manualBtn = document.getElementById('manualCaptureBtn');
+      if (manualBtn) manualBtn.style.display = 'none';
       document.getElementById('webcamFreezeBar').style.display = 'none';
       webcamRenderImage.style.display = 'none';
       webcamRenderImage.src = '';
@@ -3230,6 +3234,97 @@
       stopWebcamBtn.style.display = 'none';
       webcamStatus.textContent = 'Point OMR sheet at camera to scan';
       webcamStatus.style.color = 'var(--text-secondary)';
+    }
+
+    // ── Manual Capture Button Click Handler ───────────────────
+    const manualCaptureBtn = document.getElementById('manualCaptureBtn');
+    if (manualCaptureBtn) {
+      manualCaptureBtn.addEventListener('click', async () => {
+        if (!localStream || window._webcamFrozen) return;
+        
+        webcamStatus.textContent = '⏳ Processing manual capture...';
+        webcamStatus.style.color = 'var(--amber)';
+        manualCaptureBtn.disabled = true;
+        
+        try {
+          const canvas = document.getElementById('webcamCanvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = webcamVideo.videoWidth || 640;
+          canvas.height = webcamVideo.videoHeight || 480;
+          ctx.drawImage(webcamVideo, 0, 0, canvas.width, canvas.height);
+          
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+          const formData = new FormData();
+          formData.append('file', blob, 'capture.jpg');
+          formData.append('session_id', document.getElementById('sessionIdInput').value.trim() || 'default');
+          formData.append('version', document.getElementById('modalVersionSelect')?.value || document.getElementById('scanVersionSelect')?.value || 'DEFAULT');
+          if (window._currentAssignedUsn) {
+            formData.append('assigned_usn', window._currentAssignedUsn);
+          }
+          
+          const resp = await fetch(`${GATEWAY_URL}/debug/evaluate`, {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            webcamStatus.textContent = `❌ Capture rejected: ${errData.detail || errData.error || 'Invalid OMR sheet'}`;
+            webcamStatus.style.color = 'var(--red)';
+            manualCaptureBtn.disabled = false;
+            return;
+          }
+          
+          const data = await resp.json();
+          if (data.rejected) {
+            webcamStatus.textContent = `❌ Capture rejected: ${data.detail || data.reason}`;
+            webcamStatus.style.color = 'var(--red)';
+            manualCaptureBtn.disabled = false;
+            return;
+          }
+          
+          // Freeze scan and show evaluation results
+          window._webcamFrozen = true;
+          window._frozenResult = data;
+          resultData = data;
+          stopScanning();
+          if (ws) { ws.close(); ws = null; }
+          
+          manualCaptureBtn.style.display = 'none';
+          document.getElementById('webcamFreezeBar').style.display = 'block';
+          document.getElementById('webcamScanGuide').style.display = 'none';
+          webcamStatus.textContent = '✅ Manual Scan Frozen.';
+          webcamStatus.style.color = 'var(--green)';
+          
+          if (data.annotated_image_b64) {
+            webcamVideo.style.display = 'none';
+            webcamRenderImage.src = 'data:image/jpeg;base64,' + data.annotated_image_b64;
+            webcamRenderImage.style.display = 'block';
+          }
+          
+          hudUsn.textContent = data.usn || 'UNKNOWN';
+          if (data.score_report) {
+            hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+            hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+            hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+            hudIncorrect.textContent = data.score_report.incorrect;
+            const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+            hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+            hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+            hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+            hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+          }
+          webcamHudCard.style.display = 'block';
+          renderResults(resultData);
+          
+        } catch (err) {
+          console.error(err);
+          webcamStatus.textContent = '❌ Error during manual capture: ' + err.message;
+          webcamStatus.style.color = 'var(--red)';
+        } finally {
+          manualCaptureBtn.disabled = false;
+        }
+      });
     }
 
     // ── Save Override button (grading table) ─────────────────
@@ -3360,6 +3455,8 @@
       window._webcamFrozen = false;
       window._frozenResult = null;
       window._overrides = {};
+      const manualBtn = document.getElementById('manualCaptureBtn');
+      if (manualBtn) manualBtn.style.display = 'flex';
       document.getElementById('saveOverrideBtn').style.display = 'none';
       document.getElementById('webcamFreezeBar').style.display = 'none';
       webcamRenderImage.style.display = 'none';
@@ -3480,6 +3577,8 @@
             window._webcamFrozen = false;
             window._frozenResult = null;
             window._overrides = {};
+            const manualBtn = document.getElementById('manualCaptureBtn');
+            if (manualBtn) manualBtn.style.display = 'flex';
             document.getElementById('saveOverrideBtn').style.display = 'none';
             webcamRenderImage.style.display = 'none';
             webcamRenderImage.src = '';
