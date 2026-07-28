@@ -13,6 +13,7 @@ handled correctly.
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 from typing import List
 
@@ -74,23 +75,22 @@ class BubbleDetection:
 
 
 # ---------------------------------------------------------------------------
-# Model singleton (loaded once per worker process)
+# Thread-local Model Storage (Loaded per worker thread)
 # ---------------------------------------------------------------------------
 
-_model: YOLO | None = None
+_thread_local = threading.local()
 
 
 def _get_model(weights_path: str | Path = _WEIGHTS_PATH) -> YOLO:
-    global _model
-    if _model is None:
+    if not hasattr(_thread_local, "model") or _thread_local.model is None:
         weights_path = Path(weights_path)
         if not weights_path.exists():
             raise FileNotFoundError(
                 f"YOLOv8 weights not found at: {weights_path}\n"
                 "Place OMR_best_model.pt inside backend_ai/weights/"
             )
-        _model = YOLO(str(weights_path))
-    return _model
+        _thread_local.model = YOLO(str(weights_path))
+    return _thread_local.model
 
 
 # ---------------------------------------------------------------------------

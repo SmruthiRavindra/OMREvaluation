@@ -131,7 +131,7 @@ export async function submitResults(req, res) {
     let was_duplicate = false;
     if (session_id && student_id) {
       const existing = await query(
-        `SELECT id FROM student_results WHERE session_id = $1 AND usn = $2`,
+        `SELECT id FROM evaluations WHERE session_id = $1 AND student_id = $2`,
         [session_id, student_id]
       );
       if (existing.rows.length > 0) {
@@ -139,23 +139,53 @@ export async function submitResults(req, res) {
       }
     }
 
-    const result = await query(
-      `INSERT INTO evaluations
-         (student_id, session_id, filled_count, empty_count, ambiguous_count,
-          needs_manual_review, bubbles, processing_time_ms, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-       RETURNING id`,
-      [
-        student_id,
-        session_id,
-        filled_count,
-        empty_count,
-        ambiguous_count,
-        needs_manual_review,
-        JSON.stringify(bubbles),
-        processing_time_ms,
-      ],
-    );
+    let result;
+    if (session_id && student_id) {
+      result = await query(
+        `INSERT INTO evaluations
+           (student_id, session_id, filled_count, empty_count, ambiguous_count,
+            needs_manual_review, bubbles, processing_time_ms, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         ON CONFLICT (session_id, student_id)
+         DO UPDATE SET
+           filled_count        = EXCLUDED.filled_count,
+           empty_count         = EXCLUDED.empty_count,
+           ambiguous_count     = EXCLUDED.ambiguous_count,
+           needs_manual_review = EXCLUDED.needs_manual_review,
+           bubbles             = EXCLUDED.bubbles,
+           processing_time_ms  = EXCLUDED.processing_time_ms,
+           created_at          = NOW()
+         RETURNING id`,
+        [
+          student_id,
+          session_id,
+          filled_count,
+          empty_count,
+          ambiguous_count,
+          needs_manual_review,
+          JSON.stringify(bubbles),
+          processing_time_ms,
+        ],
+      );
+    } else {
+      result = await query(
+        `INSERT INTO evaluations
+           (student_id, session_id, filled_count, empty_count, ambiguous_count,
+            needs_manual_review, bubbles, processing_time_ms, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         RETURNING id`,
+        [
+          student_id,
+          session_id,
+          filled_count,
+          empty_count,
+          ambiguous_count,
+          needs_manual_review,
+          JSON.stringify(bubbles),
+          processing_time_ms,
+        ],
+      );
+    }
 
     return res.status(201).json({
       id: result.rows[0].id,

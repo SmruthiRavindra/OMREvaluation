@@ -475,7 +475,7 @@ async def evaluate_batch(
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format. Use PDF or JPEG/PNG.")
 
-        # 2. Process Each Page
+        # 2. Process Each Page using _process_single_sheet
         batch_results = []
         answer_key = get_answer_key_for_session(session_id or "default", version)
         layout = SheetLayout(
@@ -485,56 +485,21 @@ async def evaluate_batch(
         )
 
         for i, img in enumerate(images):
-            t_start = time.perf_counter()
-            
-            # Recreate bytes for preprocess (since existing pipeline takes bytes)
-            # Actually, let's just encode it to bypass the bytes requirement, or refactor preprocess
             _, buffer = cv2.imencode(".jpg", img)
-            clean_img = preprocess_image(buffer.tobytes())
-            
-            detections = run_yolo_inference(clean_img)
-            usn_dets = [d for d in detections if d.class_name == "usn"]
-            bubble_dets = [d for d in detections if d.class_name != "usn"]
-            
-            usn_value = None
-            if usn_dets:
-                d = usn_dets[0]
-                usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
-
-            classifications = classify_all(clean_img, bubble_dets)
-            
-            usn_y2 = usn_dets[0].y2 if usn_dets else None
-            score_report_dict = None
-            if answer_key:
-                report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
-                score_report_dict = {
-                    "total_questions": report.total_questions,
-                    "answered": report.answered,
-                    "correct": report.correct,
-                    "incorrect": report.incorrect,
-                    "unanswered": report.unanswered,
-                    "multiple_marked": report.multiple_marked,
-                    "ambiguous": report.ambiguous,
-                    "score_percent": report.score_percent,
-                    "per_question": [
-                        {
-                            "question_number": q.question_number,
-                            "marked_options": q.marked_options,
-                            "correct_option": q.correct_option,
-                            "status": q.status.value,
-                            "has_ambiguous": q.has_ambiguous,
-                        } for q in report.per_question
-                    ]
-                }
-                
-            t_end = time.perf_counter()
-            
-            batch_results.append({
-                "page_index": i + 1,
-                "usn": usn_value,
-                "score_report": score_report_dict,
-                "processing_time_ms": int((t_end - t_start) * 1000)
-            })
+            page_fname = f"{file.filename}_page_{i+1}.jpg" if file.filename else f"page_{i+1}.jpg"
+            res = _process_single_sheet(
+                idx=i,
+                filename=page_fname,
+                content=buffer.tobytes(),
+                answer_key=answer_key,
+                layout=layout,
+                assigned_usns=None,
+                roster_list=[],
+                version=version,
+            )
+            res.pop("_idx", None)
+            res["page_index"] = i + 1
+            batch_results.append(res)
 
         return BatchEvaluationResponse(
             total_pages=len(batch_results),
@@ -625,7 +590,7 @@ def _process_single_sheet(
     """
     t_start = time.perf_counter()
 
-    clean_img = preprocess_image(content)
+    clean_img, _warped, multi_sheet = preprocess_image_detect(content)
     detections = run_yolo_inference(clean_img)
 
     # Check for upside-down orientation using USN bounding box
@@ -643,7 +608,7 @@ def _process_single_sheet(
 
     # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
     rejection = _check_bubble_coverage(
-        bubble_dets, layout, ambiguous_capture=False
+        bubble_dets, layout, ambiguous_capture=multi_sheet
     )
     if rejection:
         t_end = time.perf_counter()
@@ -1325,7 +1290,7 @@ async def debug_evaluate(
         orig_img = cv2.imdecode(orig_arr, cv2.IMREAD_COLOR)
 
         # Preprocess
-        clean_img = preprocess_image(contents)
+        clean_img, _warped, multi_sheet = preprocess_image_detect(contents)
 
         # Localize
         detections = run_yolo_inference(clean_img)
@@ -1345,6 +1310,18 @@ async def debug_evaluate(
                 usn_dets = [d for d in detections if d.class_name == "usn"]
 
         bubble_dets = [d for d in detections if d.class_name != "usn"]
+
+        # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
+        layout_for_guard = SheetLayout(
+            questions_per_column=questions_per_column,
+            num_columns=num_columns,
+            options=options,
+        )
+        rejection = _check_bubble_coverage(
+            bubble_dets, layout_for_guard, ambiguous_capture=multi_sheet
+        )
+        if rejection:
+            return JSONResponse(status_code=422, content=rejection)
 
         # Extract USN
         req_prefix = str(uuid.uuid4())[:8]
