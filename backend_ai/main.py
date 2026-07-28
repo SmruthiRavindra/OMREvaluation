@@ -19,8 +19,12 @@ import io
 import uuid
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
+
+# Worker thread count for concurrent batch sheet processing
+_BATCH_MAX_WORKERS: int = int(os.getenv("BATCH_MAX_WORKERS", "4"))
 
 try:
     import psycopg2
@@ -605,6 +609,141 @@ def _get_db_task_status(task_id: str) -> Optional[dict]:
             print(f"[DB Error _get_db_task_status]: {e}")
     return None
 
+def _process_single_sheet(
+    idx: int,
+    filename: str,
+    content: bytes,
+    answer_key: Optional[Dict[int, str]],
+    layout: SheetLayout,
+    assigned_usns: Optional[List[str]],
+    roster_list: List[str],
+    version: str,
+) -> dict:
+    """
+    Process a single OMR sheet image end-to-end and return its evaluation result dict.
+    Contains the exact pipeline logic used for each sheet in a batch.
+    """
+    t_start = time.perf_counter()
+
+    clean_img = preprocess_image(content)
+    detections = run_yolo_inference(clean_img)
+
+    # Check for upside-down orientation using USN bounding box
+    usn_dets = [d for d in detections if d.class_name == "usn"]
+    if usn_dets:
+        usn_det = usn_dets[0]
+        h_img = clean_img.shape[0]
+        usn_center_y = (usn_det.y1 + usn_det.y2) / 2
+        if usn_center_y > h_img / 2:
+            clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
+            detections = run_yolo_inference(clean_img)
+            usn_dets = [d for d in detections if d.class_name == "usn"]
+
+    bubble_dets = [d for d in detections if d.class_name != "usn"]
+
+    # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
+    rejection = _check_bubble_coverage(
+        bubble_dets, layout, ambiguous_capture=False
+    )
+    if rejection:
+        t_end = time.perf_counter()
+        return {
+            "filename": filename,
+            "usn": None,
+            **rejection,
+            "score_report": None,
+            "annotated_image_b64": None,
+            "preprocessed_image_b64": None,
+            "original_image_b64": None,
+            "bubbles": [],
+            "processing_time_ms": int((t_end - t_start) * 1000),
+            "_idx": idx,
+        }
+
+    usn_value = None
+    if assigned_usns and idx < len(assigned_usns):
+        usn_value = assigned_usns[idx]
+    elif usn_dets:
+        d = usn_dets[0]
+        usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
+        if usn_value and roster_list:
+            usn_value = match_usn_against_roster(usn_value, roster_list)
+
+    classifications = classify_all(clean_img, bubble_dets)
+
+    usn_y2 = usn_dets[0].y2 if usn_dets else None
+    score_report_dict = None
+    if answer_key:
+        report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
+        score_report_dict = {
+            "total_questions": report.total_questions,
+            "answered": report.answered,
+            "correct": report.correct,
+            "incorrect": report.incorrect,
+            "unanswered": report.unanswered,
+            "multiple_marked": report.multiple_marked,
+            "ambiguous": report.ambiguous,
+            "score_percent": report.score_percent,
+            "per_question": [
+                {
+                    "question_number": q.question_number,
+                    "marked_options": q.marked_options,
+                    "correct_option": q.correct_option,
+                    "status": q.status.value,
+                    "has_ambiguous": q.has_ambiguous,
+                } for q in report.per_question
+            ]
+        }
+
+    filled_cnt = sum(1 for c in classifications if c.state == BubbleState.FILLED)
+    empty_cnt = sum(1 for c in classifications if c.state == BubbleState.EMPTY)
+    ambig_cnt = sum(1 for c in classifications if c.state == BubbleState.AMBIGUOUS)
+
+    # Generate annotated preview image for page-by-page verification
+    valid_classifications = []
+    grid = map_bubbles_to_grid(classifications, layout, usn_y2)
+    for q_num, opts in grid.items():
+        for opt_letter, cr in opts.items():
+            valid_classifications.append(cr)
+    usn_det = usn_dets[0] if usn_dets else None
+    annotated = _annotate_image(clean_img, usn_det, valid_classifications)
+    _, annotated_buf = cv2.imencode(".jpg", annotated)
+    annotated_img_b64 = base64.b64encode(annotated_buf).decode("utf-8")
+
+    # Convert classifications to bubbles list for interactive correction
+    bubbles_res = [
+        {
+            "bbox": list(c.detection.bbox),
+            "confidence": round(c.detection.confidence, 4),
+            "class_id": c.detection.class_id,
+            "class_name": c.detection.class_name,
+            "state": c.state.value,
+            "fill_ratio": round(c.fill_ratio, 4),
+            "needs_review": c.needs_review,
+        }
+        for c in classifications
+    ]
+
+    t_end = time.perf_counter()
+    return {
+        "filename": filename,
+        "usn": usn_value,
+        "version": version,
+        "filled_count": filled_cnt,
+        "empty_count": empty_cnt,
+        "ambiguous_count": ambig_cnt,
+        "needs_manual_review": ambig_cnt > 0,
+        "total_detections": len(classifications),
+        "score_report": score_report_dict,
+        "annotated_image_b64": annotated_img_b64,
+        "preprocessed_image_b64": annotated_img_b64,
+        "original_image_b64": annotated_img_b64,
+        "bubbles": bubbles_res,
+        "processing_time_ms": int((t_end - t_start) * 1000),
+        "_idx": idx,
+    }
+
+
 def run_batch_evaluation_sync(
     task_id: str,
     files_data: List[tuple],
@@ -648,149 +787,48 @@ def run_batch_evaluation_sync(
             _tasks[task_id]["progress"] = f"0/{len(all_sheets)}"
         _update_db_task_status(task_id, "processing", len(all_sheets), 0, [])
 
-        for idx, (filename, content) in enumerate(all_sheets):
-            t_start = time.perf_counter()
-            
-            clean_img = preprocess_image(content)
-            detections = run_yolo_inference(clean_img)
-            
-            # Check for upside-down orientation using USN bounding box
-            usn_dets = [d for d in detections if d.class_name == "usn"]
-            if usn_dets:
-                usn_det = usn_dets[0]
-                h_img = clean_img.shape[0]
-                usn_center_y = (usn_det.y1 + usn_det.y2) / 2
-                if usn_center_y > h_img / 2:
-                    clean_img = cv2.rotate(clean_img, cv2.ROTATE_180)
-                    detections = run_yolo_inference(clean_img)
-                    usn_dets = [d for d in detections if d.class_name == "usn"]
-                    
-            bubble_dets = [d for d in detections if d.class_name != "usn"]
+        # 2. Process all sheets concurrently using ThreadPoolExecutor
+        futures = {}
+        with ThreadPoolExecutor(max_workers=_BATCH_MAX_WORKERS) as pool:
+            for idx, (filename, content) in enumerate(all_sheets):
+                future = pool.submit(
+                    _process_single_sheet,
+                    idx,
+                    filename,
+                    content,
+                    answer_key,
+                    layout,
+                    assigned_usns,
+                    roster_list or [],
+                    version,
+                )
+                futures[future] = idx
 
-            # ── Input Quality Guard (TC#2 / TC#3 / TC#19) ──────────────────
-            rejection = _check_bubble_coverage(
-                bubble_dets, layout, ambiguous_capture=False
-            )
-            if rejection:
-                t_end = time.perf_counter()
-                result = {
-                    "filename": filename,
-                    "usn": None,
-                    **rejection,
-                    "score_report": None,
-                    "annotated_image_b64": None,
-                    "preprocessed_image_b64": None,
-                    "original_image_b64": None,
-                    "bubbles": [],
-                    "processing_time_ms": int((t_end - t_start) * 1000),
-                }
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    result = future.result()
+                    result.pop("_idx", None)
+                except Exception as exc:
+                    result = {
+                        "filename": all_sheets[idx][0],
+                        "error": f"Processing error: {str(exc)}",
+                        "processing_time_ms": 0,
+                    }
+
                 with _tasks_lock:
                     _tasks[task_id]["results"].append(result)
                     _tasks[task_id]["done"] += 1
-                    progress_pct = int((_tasks[task_id]["done"] / len(all_sheets)) * 100)
-                    _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
+                    done_cnt = _tasks[task_id]["done"]
+                    progress_pct = int((done_cnt / len(all_sheets)) * 100)
+                    _tasks[task_id]["progress"] = f"{done_cnt}/{len(all_sheets)}"
                     _tasks[task_id]["progress_pct"] = progress_pct
-                    _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
+                    _tasks[task_id]["status"] = "processing" if done_cnt < len(all_sheets) else "completed"
                     curr_results = list(_tasks[task_id]["results"])
-                    curr_done = _tasks[task_id]["done"]
                     curr_status = _tasks[task_id]["status"]
-                _update_db_task_status(task_id, curr_status, len(all_sheets), curr_done, curr_results)
-                continue  # skip to next sheet; do not run classify_all / score_sheet
 
-            usn_value = None
-            if assigned_usns and idx < len(assigned_usns):
-                usn_value = assigned_usns[idx]
-            elif usn_dets:
-                d = usn_dets[0]
-                usn_value = extract_usn_from_roi(clean_img, d.x1, d.y1, d.x2, d.y2)
-                if usn_value and roster_list:
-                    usn_value = match_usn_against_roster(usn_value, roster_list)
-                
-            classifications = classify_all(clean_img, bubble_dets)
-            
-            usn_y2 = usn_dets[0].y2 if usn_dets else None
-            score_report_dict = None
-            if answer_key:
-                report = score_sheet(classifications, answer_key, layout, usn_y2=usn_y2)
-                score_report_dict = {
-                    "total_questions": report.total_questions,
-                    "answered": report.answered,
-                    "correct": report.correct,
-                    "incorrect": report.incorrect,
-                    "unanswered": report.unanswered,
-                    "multiple_marked": report.multiple_marked,
-                    "ambiguous": report.ambiguous,
-                    "score_percent": report.score_percent,
-                    "per_question": [
-                        {
-                            "question_number": q.question_number,
-                            "marked_options": q.marked_options,
-                            "correct_option": q.correct_option,
-                            "status": q.status.value,
-                            "has_ambiguous": q.has_ambiguous,
-                        } for q in report.per_question
-                    ]
-                }
-                
-            filled_cnt = sum(1 for c in classifications if c.state == BubbleState.FILLED)
-            empty_cnt = sum(1 for c in classifications if c.state == BubbleState.EMPTY)
-            ambig_cnt = sum(1 for c in classifications if c.state == BubbleState.AMBIGUOUS)
-            
-            # Generate annotated preview image for page-by-page verification
-            valid_classifications = []
-            grid = map_bubbles_to_grid(classifications, layout, usn_y2)
-            for q_num, opts in grid.items():
-                for opt_letter, cr in opts.items():
-                    valid_classifications.append(cr)
-            usn_det = usn_dets[0] if usn_dets else None
-            annotated = _annotate_image(clean_img, usn_det, valid_classifications)
-            _, annotated_buf = cv2.imencode(".jpg", annotated)
-            annotated_img_b64 = base64.b64encode(annotated_buf).decode("utf-8")
+                _update_db_task_status(task_id, curr_status, len(all_sheets), done_cnt, curr_results)
 
-            # Convert classifications to bubbles list for interactive correction
-            bubbles_res = [
-                {
-                    "bbox": list(c.detection.bbox),
-                    "confidence": round(c.detection.confidence, 4),
-                    "class_id": c.detection.class_id,
-                    "class_name": c.detection.class_name,
-                    "state": c.state.value,
-                    "fill_ratio": round(c.fill_ratio, 4),
-                    "needs_review": c.needs_review,
-                }
-                for c in classifications
-            ]
-
-            t_end = time.perf_counter()
-            result = {
-                "filename": filename,
-                "usn": usn_value,
-                "version": version,
-                "filled_count": filled_cnt,
-                "empty_count": empty_cnt,
-                "ambiguous_count": ambig_cnt,
-                "needs_manual_review": ambig_cnt > 0,
-                "total_detections": len(classifications),
-                "score_report": score_report_dict,
-                "annotated_image_b64": annotated_img_b64,
-                "preprocessed_image_b64": annotated_img_b64,
-                "original_image_b64": annotated_img_b64,
-                "bubbles": bubbles_res,
-                "processing_time_ms": int((t_end - t_start) * 1000)
-            }
-            
-            with _tasks_lock:
-                _tasks[task_id]["results"].append(result)
-                _tasks[task_id]["done"] += 1
-                progress_pct = int((_tasks[task_id]["done"] / len(all_sheets)) * 100)
-                _tasks[task_id]["progress"] = f"{_tasks[task_id]['done']}/{len(all_sheets)}"
-                _tasks[task_id]["progress_pct"] = progress_pct
-                _tasks[task_id]["status"] = "processing" if _tasks[task_id]["done"] < len(all_sheets) else "completed"
-                curr_results = list(_tasks[task_id]["results"])
-                curr_done = _tasks[task_id]["done"]
-                curr_status = _tasks[task_id]["status"]
-            _update_db_task_status(task_id, curr_status, len(all_sheets), curr_done, curr_results)
-                
     except Exception as e:
         with _tasks_lock:
             _tasks[task_id]["status"] = "failed"
