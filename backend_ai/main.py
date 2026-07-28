@@ -154,6 +154,9 @@ class EvaluationResponse(BaseModel):
     needs_manual_review: bool
     bubbles: List[BubbleResult]
     processing_time_ms: int
+    image_resolution: Optional[str] = None
+    warp_status: Optional[str] = None
+    is_warped: bool = False
     score_report: Optional[dict] = None
 
 class BatchEvaluationResponse(BaseModel):
@@ -312,10 +315,15 @@ async def evaluate_sheet(
 
         # ── 1. Read raw bytes ───────────────────────────────────────────────
         contents = await file.read()
+        orig_arr = np.frombuffer(contents, np.uint8)
+        orig_img = cv2.imdecode(orig_arr, cv2.IMREAD_COLOR)
+        h_orig, w_orig = (orig_img.shape[0], orig_img.shape[1]) if orig_img is not None else (0, 0)
+        image_res = f"{w_orig}x{h_orig}" if w_orig and h_orig else None
 
         # ── 2. Preprocess: denoise + perspective warp ───────────────────────
         #    Use preprocess_image_detect to also get the multi-sheet flag (TC#19)
-        clean_img, _warped, multi_sheet = preprocess_image_detect(contents)
+        clean_img, is_warped, multi_sheet = preprocess_image_detect(contents)
+        warp_status = "WARPED_SUCCESS" if is_warped else "UNWARPED_FALLBACK"
 
         # ── 3. Localise: YOLOv8 + custom class-aware NMS ───────────────────
         detections = run_yolo_inference(clean_img)
@@ -426,6 +434,9 @@ async def evaluate_sheet(
             needs_manual_review=needs_manual_review,
             bubbles=bubbles,
             processing_time_ms=processing_time_ms,
+            image_resolution=image_res,
+            warp_status=warp_status,
+            is_warped=is_warped,
             score_report=score_report_dict,
         )
 
@@ -590,7 +601,13 @@ def _process_single_sheet(
     """
     t_start = time.perf_counter()
 
-    clean_img, _warped, multi_sheet = preprocess_image_detect(content)
+    orig_arr = np.frombuffer(content, np.uint8)
+    orig_img = cv2.imdecode(orig_arr, cv2.IMREAD_COLOR)
+    h_orig, w_orig = (orig_img.shape[0], orig_img.shape[1]) if orig_img is not None else (0, 0)
+    image_res = f"{w_orig}x{h_orig}" if w_orig and h_orig else None
+
+    clean_img, is_warped, multi_sheet = preprocess_image_detect(content)
+    warp_status = "WARPED_SUCCESS" if is_warped else "UNWARPED_FALLBACK"
     detections = run_yolo_inference(clean_img)
 
     # Check for upside-down orientation using USN bounding box
@@ -705,6 +722,9 @@ def _process_single_sheet(
         "original_image_b64": annotated_img_b64,
         "bubbles": bubbles_res,
         "processing_time_ms": int((t_end - t_start) * 1000),
+        "image_resolution": image_res,
+        "warp_status": warp_status,
+        "is_warped": is_warped,
         "_idx": idx,
     }
 
@@ -1285,12 +1305,14 @@ async def debug_evaluate(
         roster_list = json.loads(roster) if roster else []
         contents = await file.read()
 
-        # Decode original
+        # Preprocess
         orig_arr = np.frombuffer(contents, np.uint8)
         orig_img = cv2.imdecode(orig_arr, cv2.IMREAD_COLOR)
+        h_orig, w_orig = (orig_img.shape[0], orig_img.shape[1]) if orig_img is not None else (0, 0)
+        image_res = f"{w_orig}x{h_orig}" if w_orig and h_orig else None
 
-        # Preprocess
-        clean_img, _warped, multi_sheet = preprocess_image_detect(contents)
+        clean_img, is_warped, multi_sheet = preprocess_image_detect(contents)
+        warp_status = "WARPED_SUCCESS" if is_warped else "UNWARPED_FALLBACK"
 
         # Localize
         detections = run_yolo_inference(clean_img)
@@ -1446,6 +1468,9 @@ async def debug_evaluate(
             "ambiguous_count": ambig,
             "needs_manual_review": ambig > 0,
             "processing_time_ms": int((t_end - t_start) * 1000),
+            "image_resolution": image_res,
+            "warp_status": warp_status,
+            "is_warped": is_warped,
             "bubbles": [b.model_dump() for b in bubbles],
             "score_report": score_report_dict
         }
@@ -1653,7 +1678,8 @@ async def websocket_evaluate(websocket: WebSocket):
                         } for q in score_report.per_question
                     ]
                 }
-                
+
+            h_clean, w_clean = clean_img.shape[:2]
             response = {
                 "aligned": True,
                 "usn": usn_value or "UNKNOWN",
@@ -1661,6 +1687,9 @@ async def websocket_evaluate(websocket: WebSocket):
                 "empty_count": empty,
                 "ambiguous_count": ambig,
                 "needs_manual_review": ambig > 0,
+                "image_resolution": f"{w_clean}x{h_clean}",
+                "warp_status": "WARPED_SUCCESS" if aligned else "UNWARPED_FALLBACK",
+                "is_warped": bool(aligned),
                 "score_report": score_report_dict,
                 "bubbles": [
                     {

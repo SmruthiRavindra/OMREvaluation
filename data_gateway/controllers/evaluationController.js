@@ -125,6 +125,9 @@ export async function submitResults(req, res) {
     needs_manual_review = false,
     bubbles             = [],
     processing_time_ms  = 0,
+    image_resolution    = null,
+    warp_status         = null,
+    is_warped           = false,
   } = req.body ?? {};
 
   try {
@@ -144,8 +147,8 @@ export async function submitResults(req, res) {
       result = await query(
         `INSERT INTO evaluations
            (student_id, session_id, filled_count, empty_count, ambiguous_count,
-            needs_manual_review, bubbles, processing_time_ms, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            needs_manual_review, bubbles, processing_time_ms, image_resolution, warp_status, is_warped, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
          ON CONFLICT (session_id, student_id)
          DO UPDATE SET
            filled_count        = EXCLUDED.filled_count,
@@ -154,6 +157,9 @@ export async function submitResults(req, res) {
            needs_manual_review = EXCLUDED.needs_manual_review,
            bubbles             = EXCLUDED.bubbles,
            processing_time_ms  = EXCLUDED.processing_time_ms,
+           image_resolution    = EXCLUDED.image_resolution,
+           warp_status         = EXCLUDED.warp_status,
+           is_warped           = EXCLUDED.is_warped,
            created_at          = NOW()
          RETURNING id`,
         [
@@ -165,14 +171,17 @@ export async function submitResults(req, res) {
           needs_manual_review,
           JSON.stringify(bubbles),
           processing_time_ms,
+          image_resolution,
+          warp_status,
+          is_warped,
         ],
       );
     } else {
       result = await query(
         `INSERT INTO evaluations
            (student_id, session_id, filled_count, empty_count, ambiguous_count,
-            needs_manual_review, bubbles, processing_time_ms, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+            needs_manual_review, bubbles, processing_time_ms, image_resolution, warp_status, is_warped, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
          RETURNING id`,
         [
           student_id,
@@ -183,6 +192,9 @@ export async function submitResults(req, res) {
           needs_manual_review,
           JSON.stringify(bubbles),
           processing_time_ms,
+          image_resolution,
+          warp_status,
+          is_warped,
         ],
       );
     }

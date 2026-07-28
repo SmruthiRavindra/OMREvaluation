@@ -818,6 +818,14 @@
                           <span id="hudIncorrect" style="font-weight: 600; color: #f87171;">0</span>
                       </div>
                   </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 9px; margin-bottom: 4px;">
+                      <span style="color: rgba(255,255,255,0.5);">Resolution:</span>
+                      <span id="hudResolution" style="font-weight: 600; color: #e0f2fe;">—</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 9px; margin-bottom: 6px;">
+                      <span style="color: rgba(255,255,255,0.5);">Warp Status:</span>
+                      <span id="hudWarpStatus" style="font-weight: 600; color: #4ade80;">—</span>
+                  </div>
                   <div id="hudReviewStatus" style="margin-top: 6px; font-size: 9px; font-weight: bold; text-align: center; padding: 4px; border-radius: 6px; background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.2);">
                       STATUS: OK
                   </div>
@@ -971,9 +979,15 @@
                 </div>
               </div>
 
-              <div class="info-bar">
+              <div class="info-bar" style="flex-wrap: wrap;">
                 <div class="info-item">
                   ⏱ <span class="info-value" id="processingTime">—</span> ms
+                </div>
+                <div class="info-item">
+                  📐 Res: <span class="info-value" id="imageResolution">—</span>
+                </div>
+                <div class="info-item">
+                  🔄 Warp: <span class="info-value" id="warpStatus">—</span>
                 </div>
                 <div class="info-item">
                   🎯 <span class="info-value" id="totalDetections">—</span> detections
@@ -2179,56 +2193,43 @@
                   document.getElementById('usnInput').value = nextUsn;
                   document.getElementById('modalUsnInput').value = nextUsn;
                 }
-                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
-                if (data.score_report) {
-                  hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
-                  hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
-                  hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
-                  hudIncorrect.textContent = data.score_report.incorrect;
-                  const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
-                  hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
-                  hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
-                  hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
-                  hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
-                }
-                webcamHudCard.style.display = 'block';
+                updateHudCard(resultData);
                 renderResults(resultData);
               })
               .catch(e => {
                 console.warn(e);
-                hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
-                if (data.score_report) {
-                  hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
-                  hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
-                  hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
-                  hudIncorrect.textContent = data.score_report.incorrect;
-                  const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
-                  hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
-                  hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
-                  hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
-                  hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
-                }
-                webcamHudCard.style.display = 'block';
+                updateHudCard(resultData);
                 renderResults(resultData);
               });
           } else {
-            hudUsn.textContent = resultData.usn || data.usn || 'UNKNOWN';
-            if (data.score_report) {
-              hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
-              hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
-              hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
-              hudIncorrect.textContent = data.score_report.incorrect;
-              const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
-              hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
-              hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
-              hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
-              hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
-            }
-            webcamHudCard.style.display = 'block';
+            updateHudCard(resultData);
             renderResults(resultData);
           }
           return;
         }
+
+    function updateHudCard(data) {
+      hudUsn.textContent = data.usn || 'UNKNOWN';
+      const hudRes = document.getElementById('hudResolution');
+      if (hudRes) hudRes.textContent = data.image_resolution || '640x480';
+      const hudWarp = document.getElementById('hudWarpStatus');
+      if (hudWarp) {
+        hudWarp.textContent = data.is_warped ? '✅ Warped' : '⚠️ Unwarped';
+        hudWarp.style.color = data.is_warped ? '#4ade80' : '#fbbf24';
+      }
+      if (data.score_report) {
+        hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
+        hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
+        hudCorrect.textContent = data.score_report.correct + ' / ' + data.score_report.total_questions;
+        hudIncorrect.textContent = data.score_report.incorrect;
+        const hasReview = data.score_report.incorrect > 0 || data.score_report.unanswered > 0;
+        hudReviewStatus.textContent = hasReview ? '⚠️ REVIEW REQUIRED' : '🟢 STATUS: OK';
+        hudReviewStatus.style.background = hasReview ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)';
+        hudReviewStatus.style.color = hasReview ? '#f87171' : '#4ade80';
+        hudReviewStatus.style.borderColor = hasReview ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.2)';
+      }
+      webcamHudCard.style.display = 'block';
+    }
       } catch(e) { console.error('WS parse error', e); }
     }
     function wsErrorHandler(err) {
@@ -2257,6 +2258,20 @@
       document.getElementById('ambigCount').textContent = data.ambiguous_count;
       document.getElementById('processingTime').textContent = data.processing_time_ms;
       document.getElementById('totalDetections').textContent = data.total_detections;
+      
+      const resEl = document.getElementById('imageResolution');
+      if (resEl) resEl.textContent = data.image_resolution || 'N/A';
+
+      const warpEl = document.getElementById('warpStatus');
+      if (warpEl) {
+        if (data.is_warped) {
+          warpEl.textContent = '✅ Warped (800x1100)';
+          warpEl.style.color = 'var(--green)';
+        } else {
+          warpEl.textContent = '⚠️ Unwarped';
+          warpEl.style.color = 'var(--amber)';
+        }
+      }
       
       // Populate USN
       const usnInput = document.getElementById('usnInput');
@@ -3303,6 +3318,13 @@
           }
           
           hudUsn.textContent = data.usn || 'UNKNOWN';
+          const hudRes = document.getElementById('hudResolution');
+          if (hudRes) hudRes.textContent = data.image_resolution || '640x480';
+          const hudWarp = document.getElementById('hudWarpStatus');
+          if (hudWarp) {
+            hudWarp.textContent = data.is_warped ? '✅ Warped' : '⚠️ Unwarped';
+            hudWarp.style.color = data.is_warped ? '#4ade80' : '#fbbf24';
+          }
           if (data.score_report) {
             hudScore.textContent = data.score_report.score_percent.toFixed(1) + '%';
             hudScore.style.color = data.score_report.score_percent >= 40.0 ? '#4ade80' : '#f87171';
