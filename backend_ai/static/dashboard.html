@@ -914,6 +914,20 @@
         </div>
       </div>
 
+      <!-- Unsaved Results Warning Modal -->
+      <div id="unsavedWarningModal" style="display:none; position:fixed; inset:0; z-index:1001; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); align-items:center; justify-content:center;">
+        <div style="max-width:480px; width:90%; background:var(--bg-card); border-radius:var(--radius); border:1px solid var(--border); box-shadow:0 20px 60px rgba(0,0,0,0.3); padding:24px; text-align:center;">
+          <div style="font-size:40px; margin-bottom:12px; color:var(--amber);">⚠️</div>
+          <h3 style="font-size:16px; font-weight:700; color:var(--text-primary); margin-bottom:8px;">Unsaved Grading Results</h3>
+          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:20px; line-height:1.5;">This scanned result has not been saved to the database. Proceeding to a new scan will discard these results.</p>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button id="btnWarningSaveProceed" class="btn btn-primary" style="background:var(--green); font-size:13px; padding:10px 16px;">💾 Save & Proceed</button>
+            <button id="btnWarningDiscardProceed" class="btn btn-secondary" style="font-size:13px; padding:10px 16px; color: var(--text-primary); border-color: var(--border);">Discard & Scan Next</button>
+            <button onclick="document.getElementById('unsavedWarningModal').style.display='none'" class="btn btn-secondary" style="background:transparent; border:none; color:var(--text-muted); font-size:12px; padding:4px; cursor:pointer;">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Results View Batch Navigator Bar -->
       <div id="resultsBatchNavCard" style="display: none; margin-top: 16px; padding: 14px; border-radius: var(--radius); border: 1px solid var(--accent); background: var(--bg-card); box-shadow: var(--shadow-sm);">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
