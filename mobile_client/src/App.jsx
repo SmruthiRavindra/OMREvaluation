@@ -31,6 +31,7 @@ import {
   logoutUser,
   setOnUnauthorized,
 } from './services/api';
+import { C, RADIUS } from './tokens';
 
 // ── Screens ────────────────────────────────────────────────────────────────
 
@@ -112,7 +113,7 @@ const App = () => {
   if (authChecking) {
     return (
       <SafeAreaView style={[styles.root, styles.center]}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color={C.navy} />
       </SafeAreaView>
     );
   }
@@ -120,7 +121,7 @@ const App = () => {
   if (!authenticated) {
     return (
       <SafeAreaView style={styles.root}>
-        <StatusBar barStyle="light-content" backgroundColor="#0a0a14" />
+        <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <LoginScreen onLoginSuccess={() => setAuthenticated(true)} />
       </SafeAreaView>
     );
@@ -128,9 +129,9 @@ const App = () => {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor="#0a0a14" />
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-      {/* App header */}
+      {/* App header — navy block */}
       <View style={styles.header}>
         <View>
           <Text style={styles.logo}>Vision OMR</Text>
@@ -164,22 +165,30 @@ const App = () => {
 
 // ── Styles ─────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root:          { flex: 1, backgroundColor: '#0a0a14' },
-  center:        { justifyContent: 'center', alignItems: 'center' },
+  root:   { flex: 1, backgroundColor: C.bg },
+  center: { justifyContent: 'center', alignItems: 'center' },
 
+  // Navy header block
   header: {
     paddingHorizontal: 20,
     paddingVertical:   14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e1e2e',
+    backgroundColor:   C.navy,
     flexDirection:     'row',
     justifyContent:    'space-between',
     alignItems:        'center',
   },
-  logo:          { color: '#e2e8f0', fontSize: 20, fontWeight: '800', letterSpacing: 0.5 },
-  subtitle:      { color: '#64748b', fontSize: 12, marginTop: 2 },
-  logoutBtn:     { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#1e1e2e' },
-  logoutText:    { color: '#ef4444', fontSize: 12, fontWeight: '600' },
+  logo:     { color: C.textOnNavy, fontSize: 20, fontWeight: '700', letterSpacing: 0.5 },
+  subtitle: { color: C.navySub,    fontSize: 12, marginTop: 2 },
+
+  // Outlined white logout button
+  logoutBtn: {
+    paddingVertical:   6,
+    paddingHorizontal: 12,
+    borderRadius:      RADIUS.btn,
+    borderWidth:       1,
+    borderColor:       'rgba(255,255,255,0.6)',
+  },
+  logoutText: { color: C.textOnNavy, fontSize: 12, fontWeight: '600' },
 
   cameraWrapper: { flex: 1 },
 });

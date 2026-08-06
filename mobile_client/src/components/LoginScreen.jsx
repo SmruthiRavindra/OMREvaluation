@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { loginUser } from '../services/api';
+import { C, RADIUS } from '../tokens';
 
 const LoginScreen = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -33,93 +34,156 @@ const LoginScreen = ({ onLoginSuccess }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Vision OMR</Text>
-        <Text style={styles.subtitle}>Sign in with your faculty credentials</Text>
+    <View style={styles.root}>
+      {/* ── Navy header block ─────────────────────────────────────────── */}
+      <View style={styles.headerBlock}>
+        <View style={styles.iconBadge}>
+          <Text style={styles.iconBadgeText}>📋</Text>
+        </View>
+        <Text style={styles.appName}>Vision OMR</Text>
+        <Text style={styles.appSub}>Sign in to continue</Text>
+      </View>
 
+      {/* ── White card body ───────────────────────────────────────────── */}
+      <View style={styles.card}>
+        {/* Institution ID field */}
+        <Text style={styles.fieldLabel}>Institution ID</Text>
         <TextInput
           style={styles.input}
-          placeholder="Username"
-          placeholderTextColor="#64748b"
+          placeholder="Enter your institution ID"
+          placeholderTextColor={C.textMute}
           autoCapitalize="none"
           value={username}
           onChangeText={setUsername}
         />
 
+        {/* Password field */}
+        <Text style={styles.fieldLabel}>Password</Text>
         <TextInput
           style={styles.input}
-          placeholder="Password"
-          placeholderTextColor="#64748b"
+          placeholder="Enter your password"
+          placeholderTextColor={C.textMute}
           secureTextEntry
           value={password}
           onChangeText={setPassword}
         />
 
+        {/* Forgot password — right-aligned text link */}
+        <TouchableOpacity style={styles.forgotWrap}>
+          <Text style={styles.forgotText}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        {/* Primary navy Sign in button */}
         <TouchableOpacity
-          style={styles.button}
+          style={styles.signInBtn}
           onPress={handleLogin}
           disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={C.textOnNavy} />
           ) : (
-            <Text style={styles.buttonText}>Sign In</Text>
+            <Text style={styles.signInBtnText}>Sign in</Text>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* ── Footer note ───────────────────────────────────────────────── */}
+      <Text style={styles.footer}>
+        New user? Contact your department admin
+      </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#0a0a14',
+    backgroundColor: C.bg,
+  },
+
+  // ── Navy header block ────────────────────────────────────────────────────
+  headerBlock: {
+    backgroundColor: C.navy,
+    paddingTop: 56,
+    paddingBottom: 40,
+    alignItems: 'center',
+  },
+  iconBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: RADIUS.chip,
+    backgroundColor: C.surface,
+    alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    marginBottom: 14,
   },
-  card: {
-    backgroundColor: '#141423',
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#1e1e2e',
+  iconBadgeText: {
+    fontSize: 26,
   },
-  title: {
-    color: '#e2e8f0',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
+  appName: {
+    color: C.textOnNavy,
+    fontSize: 22,
+    fontWeight: '700',
   },
-  subtitle: {
-    color: '#64748b',
+  appSub: {
+    color: C.navySub,
     fontSize: 13,
-    textAlign: 'center',
     marginTop: 4,
-    marginBottom: 24,
+  },
+
+  // ── White card ───────────────────────────────────────────────────────────
+  card: {
+    backgroundColor: C.surface,
+    marginHorizontal: 20,
+    marginTop: -20,
+    borderRadius: RADIUS.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 24,
+  },
+  fieldLabel: {
+    color: C.navy,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: '#0a0a14',
-    borderColor: '#2b2b40',
+    backgroundColor: C.surface,
+    borderColor: C.border,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: '#ffffff',
+    borderRadius: RADIUS.btn,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: C.textBody,
     fontSize: 14,
     marginBottom: 16,
   },
-  button: {
-    backgroundColor: '#6366f1',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
+  forgotWrap: {
+    alignSelf: 'flex-end',
+    marginBottom: 20,
+    marginTop: -8,
   },
-  buttonText: {
-    color: '#ffffff',
+  forgotText: {
+    color: C.navy,
+    fontSize: 12,
+  },
+  signInBtn: {
+    backgroundColor: C.navy,
+    paddingVertical: 14,
+    borderRadius: RADIUS.btn,
+    alignItems: 'center',
+  },
+  signInBtnText: {
+    color: C.textOnNavy,
     fontWeight: '700',
     fontSize: 15,
+  },
+
+  // ── Footer ───────────────────────────────────────────────────────────────
+  footer: {
+    color: C.textMute,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 20,
   },
 });
 
