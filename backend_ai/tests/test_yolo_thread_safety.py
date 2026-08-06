@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from core.localization import run_yolo_inference, _get_model
+from core.preprocess import preprocess_image
 
 
 def _make_blank_image_bytes() -> bytes:
