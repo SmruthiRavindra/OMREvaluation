@@ -66,15 +66,6 @@ app = FastAPI(
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
 
-@app.on_event("startup")
-def startup_prewarm_model():
-    try:
-        print("[Startup] Pre-warming YOLOv8 weights into RAM...")
-        _get_model()
-        print("[Startup] YOLOv8 model successfully cached in RAM!")
-    except Exception as err:
-        print(f"[Startup Warning] Pre-warming model failed: {err}")
-
 def get_db_connection():
     if not HAS_PSYCOPG2:
         return None
@@ -363,9 +354,7 @@ async def evaluate_sheet(
 
         # Extract USN region using OCR
         usn_value = assigned_usn
-        if not usn_value and roster_list:
-            usn_value = roster_list[0]
-        elif not usn_value and usn_detections:
+        if not usn_value and usn_detections:
             det = usn_detections[0]
             usn_value = extract_usn_from_roi(clean_img, det.x1, det.y1, det.x2, det.y2)
             if usn_value and roster_list:
@@ -1379,9 +1368,7 @@ async def debug_evaluate(
         # Extract USN
         req_prefix = str(uuid.uuid4())[:8]
         usn_value = assigned_usn
-        if not usn_value and roster_list:
-            usn_value = roster_list[0]
-        elif not usn_value and usn_dets:
+        if not usn_value and usn_dets:
             det = usn_dets[0]
             usn_value = extract_usn_from_roi(
                 clean_img, det.x1, det.y1, det.x2, det.y2,
