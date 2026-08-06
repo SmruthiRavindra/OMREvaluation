@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from core.localization import run_yolo_inference, _get_model, _thread_local
+from core.localization import run_yolo_inference, _get_model
 from core.preprocess import preprocess_image
 
 
@@ -55,16 +55,13 @@ class TestYOLOThreadSafety:
     def test_concurrent_cold_start(self):
         """
         Verifies that multiple worker threads calling _get_model() simultaneously
-        for the first time (cold start) each receive a valid, thread-local YOLO instance
-        without exceptions or race conditions.
+        receive a valid, thread-safe YOLO instance without exceptions or race conditions.
         """
         models_fetched = []
         errors = []
 
         def _cold_start_worker():
             try:
-                # Force cold initialization state on this thread
-                _thread_local.model = None
                 model = _get_model()
                 assert model is not None
                 models_fetched.append(model)
@@ -78,6 +75,5 @@ class TestYOLOThreadSafety:
 
         assert not errors, f"Errors during cold start: {errors}"
         assert len(models_fetched) == 8
-        # Ensure model instances were created successfully across threads
         instance_ids = set(id(m) for m in models_fetched)
-        assert len(instance_ids) >= 1
+        assert len(instance_ids) == 1
