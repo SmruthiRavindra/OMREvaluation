@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 # Worker thread count for concurrent batch sheet processing
-_BATCH_MAX_WORKERS: int = int(os.getenv("BATCH_MAX_WORKERS", "2"))
+_BATCH_MAX_WORKERS: int = int(os.getenv("BATCH_MAX_WORKERS", "8"))
 
 try:
     import psycopg2
@@ -65,6 +65,15 @@ app = FastAPI(
     version="2.0.0",
     description="End-to-end OMR sheet processing: image cleanup → bubble detection → grading.",
 )
+
+@app.on_event("startup")
+def startup_prewarm_model():
+    try:
+        print("[Startup] Pre-warming YOLOv8 weights into RAM...")
+        _get_model()
+        print("[Startup] YOLOv8 model successfully cached in RAM!")
+    except Exception as err:
+        print(f"[Startup Warning] Pre-warming model failed: {err}")
 
 def get_db_connection():
     if not HAS_PSYCOPG2:

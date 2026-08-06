@@ -78,19 +78,23 @@ class BubbleDetection:
 # Thread-local Model Storage (Loaded per worker thread)
 # ---------------------------------------------------------------------------
 
-_thread_local = threading.local()
+_MODEL_LOCK = threading.Lock()
+_GLOBAL_MODEL = None
 
 
 def _get_model(weights_path: str | Path = _WEIGHTS_PATH) -> YOLO:
-    if not hasattr(_thread_local, "model") or _thread_local.model is None:
-        weights_path = Path(weights_path)
-        if not weights_path.exists():
-            raise FileNotFoundError(
-                f"YOLOv8 weights not found at: {weights_path}\n"
-                "Place OMR_best_model.pt inside backend_ai/weights/"
-            )
-        _thread_local.model = YOLO(str(weights_path))
-    return _thread_local.model
+    global _GLOBAL_MODEL
+    if _GLOBAL_MODEL is None:
+        with _MODEL_LOCK:
+            if _GLOBAL_MODEL is None:
+                weights_path = Path(weights_path)
+                if not weights_path.exists():
+                    raise FileNotFoundError(
+                        f"YOLOv8 weights not found at: {weights_path}\n"
+                        "Place OMR_best_model.pt inside backend_ai/weights/"
+                    )
+                _GLOBAL_MODEL = YOLO(str(weights_path))
+    return _GLOBAL_MODEL
 
 
 # ---------------------------------------------------------------------------
