@@ -997,7 +997,7 @@
                 </div>
               </div>
 
-              <div class="info-bar" style="flex-wrap: wrap;">
+              <div class="info-bar" style="display: none !important;">
                 <div class="info-item">
                   ⏱ <span class="info-value" id="processingTime">—</span> ms
                 </div>
@@ -1010,10 +1010,10 @@
                 <div class="info-item">
                   🎯 <span class="info-value" id="totalDetections">—</span> detections
                 </div>
-                <div class="info-item" style="display:flex; align-items:center; gap: 6px;">
-                  🆔 Student: 
-                  <input type="text" id="usnInput" style="padding: 2px 6px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--accent); width: 110px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
-                </div>
+              </div>
+              <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                <label for="usnInput" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">🆔 Student USN:</label>
+                <input type="text" id="usnInput" style="padding: 4px 8px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary); width: 140px; font-weight: bold; font-family: monospace;" placeholder="UNKNOWN">
               </div>
 
               <!-- Scoring Section -->

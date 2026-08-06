@@ -3,23 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - Vision OMR Portal</title>
+  <title>Login - OMR Evaluator</title>
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   
   <style>
     :root {
-      --primary: #16324F;
-      --primary-hover: #0E2338;
-      --background: #F4F6F9;
-      --surface: #ffffff;
-      --text: #16324F;
-      --text-secondary: #7A8799;
+      --navy: #16324F;
+      --navy-hover: #0E2338;
+      --bg: #F4F6F9;
+      --surface: #FFFFFF;
       --border: #E1E5EB;
+      --text-main: #16324F;
+      --text-muted: #7A8799;
       --error: #C0392B;
-      --radius: 10px;
+      --radius-card: 16px;
+      --radius-btn: 10px;
     }
 
     * {
@@ -30,114 +31,144 @@
 
     body {
       font-family: 'Inter', -apple-system, sans-serif;
-      background-color: var(--background);
-      color: var(--text);
+      background-color: var(--bg);
+      color: var(--text-main);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       min-height: 100vh;
-      padding: 20px;
+      padding: 24px;
     }
 
-    .login-container {
+    .login-wrapper {
       width: 100%;
       max-width: 400px;
       background: var(--surface);
+      border-radius: var(--radius-card);
       border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-      padding: 40px 32px;
+      box-shadow: 0 10px 25px -5px rgba(22, 50, 79, 0.08);
+      overflow: hidden;
     }
 
-    .header {
+    /* Top Navy Header Block */
+    .navy-header {
+      background: var(--navy);
+      color: #FFFFFF;
+      padding: 36px 24px 28px 24px;
       text-align: center;
-      margin-bottom: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
-    .logo-container {
-      display: inline-flex;
+    .avatar-badge {
+      width: 52px;
+      height: 52px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      display: flex;
       align-items: center;
       justify-content: center;
-      width: 48px;
-      height: 48px;
-      background: #16324F;
-      color: #ffffff;
-      border-radius: 999px;
-      margin-bottom: 16px;
+      font-weight: 800;
+      font-size: 18px;
+      color: #FFFFFF;
+      margin-bottom: 14px;
+      letter-spacing: 0.5px;
     }
 
-    .logo-svg {
-      width: 24px;
-      height: 24px;
-      fill: currentColor;
-    }
-
-    .title {
+    .navy-header .title {
       font-size: 22px;
       font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.5px;
-      margin-bottom: 6px;
+      color: #FFFFFF;
+      margin-bottom: 4px;
+      letter-spacing: -0.3px;
     }
 
-    .subtitle {
-      font-size: 14px;
-      color: var(--text-secondary);
-    }
-
-    .form-group {
-      margin-bottom: 20px;
-    }
-
-    .label {
-      display: block;
+    .navy-header .subtitle {
       font-size: 13px;
-      font-weight: 500;
-      margin-bottom: 6px;
-      color: #334155;
+      color: #B8D0E8;
+      font-weight: 400;
     }
 
-    .input-field {
-      width: 100%;
-      padding: 10px 14px;
-      font-family: inherit;
-      font-size: 14px;
-      background: #f8fafc;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      transition: all 0.15s ease;
-      outline: none;
-    }
-
-    .input-field:focus {
-      background: #ffffff;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    /* Form Body */
+    .form-body {
+      padding: 28px 24px 24px 24px;
     }
 
     .error-banner {
       display: none;
-      background-color: #fef2f2;
-      border: 1px solid #fca5a5;
+      background-color: #FDECEA;
+      border: 1px solid #FADBD8;
       color: var(--error);
       padding: 10px 14px;
-      border-radius: var(--radius);
+      border-radius: var(--radius-btn);
       font-size: 13px;
       margin-bottom: 20px;
       text-align: left;
     }
 
-    .submit-btn {
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-main);
+    }
+
+    .input-field {
       width: 100%;
-      padding: 12px;
-      background: var(--primary);
-      color: #ffffff;
-      border: none;
-      border-radius: var(--radius);
+      padding: 12px 14px;
       font-family: inherit;
       font-size: 14px;
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-btn);
+      color: var(--text-main);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      outline: none;
+    }
+
+    .input-field:focus {
+      border-color: var(--navy);
+      box-shadow: 0 0 0 3px rgba(22, 50, 79, 0.1);
+    }
+
+    .input-field::placeholder {
+      color: #A0AEC0;
+    }
+
+    .forgot-link-wrapper {
+      text-align: right;
+      margin-top: -6px;
+      margin-bottom: 22px;
+    }
+
+    .forgot-link {
+      font-size: 12px;
+      color: var(--navy);
       font-weight: 600;
+      text-decoration: none;
+    }
+
+    .forgot-link:hover {
+      text-decoration: underline;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--navy);
+      color: #FFFFFF;
+      border: none;
+      border-radius: var(--radius-btn);
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
       cursor: pointer;
       transition: background 0.15s ease;
       display: flex;
@@ -146,11 +177,11 @@
     }
 
     .submit-btn:hover {
-      background: var(--primary-hover);
+      background: var(--navy-hover);
     }
 
     .submit-btn:disabled {
-      background: #94a3b8;
+      background: #A0AEC0;
       cursor: not-allowed;
     }
 
@@ -159,7 +190,7 @@
       width: 18px;
       height: 18px;
       border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: #ffffff;
+      border-top-color: #FFFFFF;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin-right: 8px;
@@ -173,45 +204,54 @@
       text-align: center;
       margin-top: 24px;
       font-size: 12px;
-      color: var(--text-secondary);
+      color: var(--text-muted);
+    }
+
+    .footer-note strong {
+      color: var(--navy);
+      font-weight: 700;
     }
   </style>
 </head>
 <body>
 
-  <div class="login-container">
-    <div class="header">
-      <div class="logo-container">
-        <svg class="logo-svg" viewBox="0 0 24 24">
-          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
-        </svg>
-      </div>
-      <h1 class="title">Vision OMR System</h1>
-      <p class="subtitle">Academic Grading Portal</p>
+  <div class="login-wrapper">
+    <!-- Top Navy Header Card -->
+    <div class="navy-header">
+      <div class="avatar-badge">OM</div>
+      <h1 class="title">OMR Evaluator</h1>
+      <p class="subtitle">Sign in to continue</p>
     </div>
 
-    <div id="errorBanner" class="error-banner"></div>
+    <!-- Form Content -->
+    <div class="form-body">
+      <div id="errorBanner" class="error-banner"></div>
 
-    <form id="loginForm">
-      <div class="form-group">
-        <label for="usernameInput" class="label">Username</label>
-        <input type="text" id="usernameInput" class="input-field" placeholder="Enter username" required autocomplete="username">
-      </div>
-      
-      <div class="form-group" style="margin-bottom: 24px;">
-        <label for="passwordInput" class="label">Password</label>
-        <input type="password" id="passwordInput" class="input-field" placeholder="Enter password" required autocomplete="current-password">
-      </div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="usernameInput" class="label">Institution ID</label>
+          <input type="text" id="usernameInput" class="input-field" placeholder="e.g. 21BCS114" required autocomplete="username">
+        </div>
+        
+        <div class="form-group">
+          <label for="passwordInput" class="label">Password</label>
+          <input type="password" id="passwordInput" class="input-field" placeholder="Enter your password" required autocomplete="current-password">
+        </div>
 
-      <button type="submit" id="submitBtn" class="submit-btn">
-        <span id="btnSpinner" class="spinner"></span>
-        <span id="btnText">Sign In</span>
-      </button>
-    </form>
+        <div class="forgot-link-wrapper">
+          <a href="#" class="forgot-link" onclick="alert('Please contact your department admin to reset your password.'); return false;">Forgot password?</a>
+        </div>
 
-    <div class="footer-note">
-      Internal Use Only &bull; College Administration
+        <button type="submit" id="submitBtn" class="submit-btn">
+          <span id="btnSpinner" class="spinner"></span>
+          <span id="btnText">Sign in</span>
+        </button>
+      </form>
     </div>
+  </div>
+
+  <div class="footer-note">
+    New here? <strong>Contact your department admin</strong>
   </div>
 
   <script>
@@ -273,7 +313,7 @@
         errorBanner.style.display = 'block';
         submitBtn.disabled = false;
         btnSpinner.style.display = 'none';
-        btnText.textContent = 'Sign In';
+        btnText.textContent = 'Sign in';
       }
     });
   </script>
